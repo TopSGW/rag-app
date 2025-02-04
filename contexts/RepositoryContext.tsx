@@ -3,16 +3,17 @@ import * as SecureStore from 'expo-secure-store';
 import { useAuth } from './AuthContext';
 import RepositoryService from '../services/repositoryService';
 import { getConfig } from '../lib/api/config';
+import { Repository } from '../types/repository';
 
 interface RepositoryState {
-  repositories: any[];
-  currentRepository: any | null;
+  repositories: Repository[];
+  currentRepository: Repository | null;
   isLoading: boolean;
   error: string | null;
 }
 
 interface RepositoryContextType extends RepositoryState {
-  setCurrentRepository: (repo: any | null) => void;
+  setCurrentRepository: (repo: Repository | null) => void;
   createRepository: (name: string) => Promise<void>;
   updateRepository: (currentName: string, newName: string) => Promise<void>;
   deleteRepository: (name: string) => Promise<void>;
@@ -95,7 +96,7 @@ export function RepositoryProvider({ children }: { children: React.ReactNode }) 
     return () => clearTimeout(timeoutId);
   }, [state.repositories, state.currentRepository]);
 
-  const setCurrentRepository = useCallback((repo: any | null) => {
+  const setCurrentRepository = useCallback((repo: Repository | null) => {
     if (isUpdating.current) {
       pendingOperation.current = () => Promise.resolve(
         setState(prev => ({ ...prev, currentRepository: repo }))
@@ -223,7 +224,7 @@ export function RepositoryProvider({ children }: { children: React.ReactNode }) 
     if (!isInitialized.current || !user?.phone_number || isUpdating.current) return;
 
     refreshRepositories();
-  }, [user?.phone_number]); // Removed refreshRepositories from deps
+  }, [user?.phone_number]); // Removed refreshRepositories from deps to avoid unnecessary refreshes
 
   const value: RepositoryContextType = {
     ...state,

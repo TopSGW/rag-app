@@ -16,6 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ThemedView } from './ThemedView';
 import { ThemedText } from './ThemedText';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { Repository } from '@/types/repository';
 
 export default function RepositoryManager() {
   const { isAuthenticated, user } = useAuth();
@@ -29,13 +30,21 @@ export default function RepositoryManager() {
     deleteRepository,
     setCurrentRepository,
     clearError,
+    refreshRepositories,
   } = useRepository();
 
   const [newRepoName, setNewRepoName] = useState('');
-  const [editingRepo, setEditingRepo] = useState<{ id: number; name: string } | null>(null);
+  const [editingRepo, setEditingRepo] = useState<Repository | null>(null);
   const [editName, setEditName] = useState('');
   const colorScheme = useColorScheme();
   const inputRef = useRef<TextInput>(null);
+
+  // Load repositories when component mounts
+  useEffect(() => {
+    if (isAuthenticated && user?.phone_number) {
+      refreshRepositories();
+    }
+  }, [isAuthenticated, user?.phone_number, refreshRepositories]);
 
   useEffect(() => {
     if (editingRepo) {
@@ -104,7 +113,7 @@ export default function RepositoryManager() {
   }, [editingRepo, editName, updateRepository]);
 
   const handleDeleteRepository = useCallback(
-    (repository: { id: number; name: string }) => {
+    (repository: Repository) => {
       Alert.alert(
         'Delete Repository',
         `Are you sure you want to delete "${repository.name}"? This action cannot be undone.`,
@@ -128,7 +137,7 @@ export default function RepositoryManager() {
     [deleteRepository]
   );
 
-  const startEditing = useCallback((repository: { id: number; name: string }) => {
+  const startEditing = useCallback((repository: Repository) => {
     setEditingRepo(repository);
     setEditName(repository.name);
   }, []);
@@ -178,6 +187,12 @@ export default function RepositoryManager() {
 
         {isLoading ? (
           <ActivityIndicator size="large" color="#2196f3" style={styles.loader} />
+        ) : repositories.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <ThemedText style={styles.emptyText}>
+              No repositories found. Create one to get started!
+            </ThemedText>
+          </View>
         ) : (
           <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
             {repositories.map((repo) => (
@@ -370,5 +385,16 @@ const styles = StyleSheet.create({
   clearErrorText: {
     color: '#c62828',
     fontWeight: 'bold',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyText: {
+    fontSize: 16,
+    textAlign: 'center',
+    color: '#666',
   },
 });

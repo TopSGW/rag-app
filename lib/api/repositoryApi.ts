@@ -59,7 +59,8 @@ class RepositoryAPI {
       });
 
       const data = await this.handleResponse<RepositoryListResponse>(response);
-      return data.repositories;
+      // Initialize an empty array if repositories is undefined
+      return data?.repositories || [];
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to list repositories: ${error.message}`);
