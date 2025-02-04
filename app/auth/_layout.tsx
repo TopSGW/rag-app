@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 import { View } from 'react-native';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
-export default function AuthLayout() {
+export default function Layout() {
   const colorScheme = useColorScheme();
   const backgroundColor = colorScheme === 'dark' ? '#000' : '#fff';
 
@@ -15,9 +15,24 @@ export default function AuthLayout() {
           animation: 'fade',
         }}
       >
-        <Stack.Screen name="login" />
-        <Stack.Screen name="signup" />
-        <Stack.Screen name="index" redirect />
+        <Stack.Screen 
+          name="login" 
+          options={{
+            title: 'Login',
+          }}
+        />
+        <Stack.Screen 
+          name="signup" 
+          options={{
+            title: 'Sign Up',
+          }}
+        />
+        <Stack.Screen 
+          name="index"
+          options={{
+            title: 'Auth',
+          }}
+        />
       </Stack>
     </View>
   );

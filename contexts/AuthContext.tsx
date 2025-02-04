@@ -2,17 +2,21 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Alert } from 'react-native';
+import UserService from '../services/userService';
+import { User } from '../types/user';
 
 type AuthContextType = {
   isAuthenticated: boolean;
-  loginWithBiometrics: (phoneNumber: string) => Promise<void>;
+  login: (phoneNumber: string) => Promise<void>;
   signup: (phoneNumber: string) => Promise<void>;
   logout: () => void;
   isBiometricSupported: boolean;
   phoneNumber: string | null;
+  user: User | null;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
+const userService = new UserService();
 
 // Check if running in development mode
 const isTestEnvironment = __DEV__;
@@ -21,6 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isBiometricSupported, setIsBiometricSupported] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   // Check biometric support on component mount
   useEffect(() => {
@@ -53,30 +58,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const authenticateWithBiometrics = async (): Promise<boolean> => {
-    try {
-      // For development mode, show a confirmation dialog instead of actual biometric
-      if (isTestEnvironment) {
-        return new Promise((resolve) => {
-          Alert.alert(
-            'Development Mode',
-            'This is a simulated biometric authentication. Would you like to authenticate?',
-            [
-              {
-                text: 'Cancel',
-                onPress: () => resolve(false),
-                style: 'cancel',
-              },
-              {
-                text: 'Authenticate',
-                onPress: () => resolve(true),
-              },
-            ]
-          );
-        });
-      }
+    if (isTestEnvironment) {
+      return new Promise((resolve) => {
+        Alert.alert(
+          'Development Mode',
+          'This is a simulated biometric authentication. Would you like to authenticate?',
+          [
+            {
+              text: 'Cancel',
+              onPress: () => resolve(false),
+              style: 'cancel',
+            },
+            {
+              text: 'Authenticate',
+              onPress: () => resolve(true),
+            },
+          ]
+        );
+      });
+    }
 
+    try {
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Authenticate to continue',
+        promptMessage: 'Verify your identity',
         fallbackLabel: 'Use passcode',
         disableDeviceFallback: false,
       });
@@ -89,57 +93,108 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const validatePhoneNumber = (phone: string): boolean => {
-    // Basic phone number validation (can be enhanced based on your requirements)
-    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-    return phoneRegex.test(phone.replace(/\D/g, ''));
-  };
+  const login = async (phone: string) => {
+    try {
+      // Step 1: Validate phone number and check user existence
+      await userService.validatePhoneNumber(phone);
+      let userResponse;
+      
+      try {
+        userResponse = await userService.loginUser({ phone_number: phone });
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('User not found')) {
+          Alert.alert('Error', 'User not found. Please register first.');
+        } else {
+          throw error;
+        }
+        return;
+      }
 
-  const loginWithBiometrics = async (phone: string) => {
-    if (!validatePhoneNumber(phone)) {
-      Alert.alert('Error', 'Please enter a valid phone number');
-      return;
-    }
+      // Step 2: If user exists, require biometric authentication
+      if (!isBiometricSupported && !isTestEnvironment) {
+        Alert.alert('Error', 'Biometric authentication is required but not supported on this device');
+        return;
+      }
 
-    if (!isBiometricSupported && !isTestEnvironment) {
-      Alert.alert('Error', 'Biometric authentication is not supported on this device');
-      return;
-    }
+      const authenticated = await authenticateWithBiometrics();
+      if (!authenticated) {
+        Alert.alert('Error', 'Biometric authentication failed. Please try again.');
+        return;
+      }
 
-    const authenticated = await authenticateWithBiometrics();
-    if (authenticated) {
+      // Step 3: Complete login after successful biometric auth
       setPhoneNumber(phone);
+      setUser({
+        id: userResponse.id,
+        phone_number: userResponse.phone_number
+      });
       setIsAuthenticated(true);
+    } catch (error) {
+      let errorMessage = 'Failed to login. Please try again.';
+      if (error instanceof Error) {
+        if (error.message.includes('Invalid phone number format')) {
+          errorMessage = 'Invalid phone number format. Must be between 9 and 15 digits.';
+        }
+      }
+      Alert.alert('Error', errorMessage);
+      throw error;
     }
   };
 
   const signup = async (phone: string) => {
-    if (!validatePhoneNumber(phone)) {
-      Alert.alert('Error', 'Please enter a valid phone number');
-      return;
-    }
+    try {
+      // Step 1: Validate phone number
+      await userService.validatePhoneNumber(phone);
 
-    // Here you would typically make an API call to register the phone number
-    // For now, we'll just simulate a successful signup
-    console.log('Signing up with:', phone);
-    setPhoneNumber(phone);
-    setIsAuthenticated(true);
+      // Step 2: Require biometric setup
+      if (!isBiometricSupported && !isTestEnvironment) {
+        Alert.alert('Error', 'Biometric authentication is required but not supported on this device');
+        return;
+      }
+
+      const authenticated = await authenticateWithBiometrics();
+      if (!authenticated) {
+        Alert.alert('Error', 'Biometric authentication failed. Please try again.');
+        return;
+      }
+
+      // Step 3: Register user after successful biometric auth
+      const userResponse = await userService.registerUser({ phone_number: phone });
+      setPhoneNumber(phone);
+      setUser({
+        id: userResponse.id,
+        phone_number: userResponse.phone_number
+      });
+      setIsAuthenticated(true);
+    } catch (error) {
+      let errorMessage = 'Failed to register. Please try again.';
+      if (error instanceof Error) {
+        if (error.message.includes('Invalid phone number format')) {
+          errorMessage = 'Invalid phone number format. Must be between 9 and 15 digits.';
+        } else if (error.message.includes('Phone number already registered')) {
+          errorMessage = 'This phone number is already registered. Please try logging in.';
+        }
+      }
+      Alert.alert('Error', errorMessage);
+    }
   };
 
   const logout = () => {
     setIsAuthenticated(false);
     setPhoneNumber(null);
+    setUser(null);
   };
 
   return (
     <AuthContext.Provider 
       value={{ 
-        isAuthenticated, 
-        loginWithBiometrics, 
+        isAuthenticated,
+        login,
         signup, 
         logout,
         isBiometricSupported,
-        phoneNumber
+        phoneNumber,
+        user
       }}
     >
       {children}

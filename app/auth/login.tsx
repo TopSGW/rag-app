@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { StyleSheet, TouchableOpacity, Image, ActivityIndicator, Alert, View } from 'react-native';
 import { Link } from 'expo-router';
 import { ThemedView } from '@/components/ThemedView';
@@ -7,10 +7,19 @@ import { useAuth } from '@/contexts/AuthContext';
 import { MaskedTextInput } from 'react-native-mask-text';
 import { Ionicons } from '@expo/vector-icons';
 
-const LoginScreen = () => {
+export default function Page() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { loginWithBiometrics, isBiometricSupported } = useAuth();
+  const { login, isBiometricSupported } = useAuth();
+
+  const cleanPhoneNumber = useCallback((phone: string): string => {
+    // Keep the + if it exists
+    const hasPlus = phone.startsWith('+');
+    // Remove all non-digit characters
+    const cleaned = phone.replace(/[^\d]/g, '');
+    // Add back the + if it existed
+    return hasPlus ? `+${cleaned}` : cleaned;
+  }, []);
 
   const handleLogin = async () => {
     if (!phoneNumber.trim()) {
@@ -18,11 +27,18 @@ const LoginScreen = () => {
       return;
     }
 
+    // Clean the phone number before sending
+    const cleanedPhone = cleanPhoneNumber(phoneNumber);
+    if (cleanedPhone.length < 9 || cleanedPhone.length > 15) {
+      Alert.alert('Error', 'Phone number must be between 9 and 15 digits');
+      return;
+    }
+
     try {
       setIsLoading(true);
-      await loginWithBiometrics(phoneNumber);
+      await login(cleanedPhone);
     } catch (error) {
-      Alert.alert('Error', 'Failed to login. Please try again.');
+      // Error is already handled in the auth context
       console.error('Login error:', error);
     } finally {
       setIsLoading(false);
@@ -48,28 +64,26 @@ const LoginScreen = () => {
           keyboardType="phone-pad"
           editable={!isLoading}
         />
-        {isBiometricSupported && (
-          <TouchableOpacity 
-            style={styles.biometricButton}
-            onPress={handleLogin}
-            disabled={isLoading}
-          >
-            <Ionicons name="finger-print-outline" size={24} color="#007AFF" />
-          </TouchableOpacity>
-        )}
+      </View>
+
+      <View style={styles.infoContainer}>
+        <Ionicons name="finger-print-outline" size={24} color="#007AFF" />
+        <ThemedText style={styles.infoText}>
+          Biometric verification will be required after phone number verification
+        </ThemedText>
       </View>
       
       <TouchableOpacity 
         style={[styles.button, isLoading && styles.buttonDisabled]} 
         onPress={handleLogin}
-        disabled={isLoading}
+        disabled={isLoading || !phoneNumber.trim()}
       >
         {isLoading ? (
           <ActivityIndicator color="#FFFFFF" />
         ) : (
           <>
             <Ionicons name="log-in-outline" size={24} color="#FFFFFF" />
-            <ThemedText style={styles.buttonText}>Login with Biometrics</ThemedText>
+            <ThemedText style={styles.buttonText}>Login</ThemedText>
           </>
         )}
       </TouchableOpacity>
@@ -84,12 +98,12 @@ const LoginScreen = () => {
 
       {!isBiometricSupported && (
         <ThemedText style={styles.warningText}>
-          Biometric authentication is not available on this device
+          Biometric authentication is required but not available on this device
         </ThemedText>
       )}
     </ThemedView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -111,12 +125,9 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
     marginBottom: 15,
   },
   input: {
-    flex: 1,
     height: 50,
     backgroundColor: '#f5f5f5',
     borderRadius: 10,
@@ -124,11 +135,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#000',
   },
-  biometricButton: {
-    marginLeft: 10,
-    padding: 10,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
+  infoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 15,
+    gap: 10,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#666',
   },
   button: {
     width: '100%',
@@ -163,5 +180,3 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
-
-export default LoginScreen;
