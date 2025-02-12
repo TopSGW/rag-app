@@ -4,17 +4,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { router } from 'expo-router';
-import { useFileUploader } from '@/hooks/useFileUploader';
-import RepositoryAPI from '@/lib/api/repositoryApi';
-import { Repository } from '@/types/repository';
-import { FileMetadata } from '@/types/files';
-import { useAuth } from '@/contexts/AuthContext'; // Assuming you have an AuthContext for user information
+import { useFileUploader } from '../hooks/useFileUploader';
+import RepositoryAPI from '../api/repositoryApi';
+import { Repository } from '../interfaces/repository';
+import { FileMetadata } from '../interfaces/files';
+import { useAuth } from '../contexts/AuthContext';
 
 const API_BASE_URL = 'http://your-api-base-url'; // Replace with your actual API base URL
 const repositoryApi = new RepositoryAPI(API_BASE_URL);
 
 export default function RepositoryManagementScreen() {
-  const { user } = useAuth(); // Assuming this hook provides the user's phone number
+  const { user } = useAuth();
   const { files, isUploading, uploadProgress, error, uploadFiles, deleteFile, refreshFiles, clearError } = useFileUploader();
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [loading, setLoading] = useState(false);

@@ -1,10 +1,10 @@
-import UserAPI from '../lib/api/userApi';
+import UserAPI from '@/api/userApi';
 import {
   UserResponse,
   RegisterUserParams,
   UpdatePhoneParams,
   GetUserParams
-} from '../types/user';
+} from '@/interfaces/user';
 
 class UserService {
   private api: UserAPI;

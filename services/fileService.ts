@@ -1,4 +1,4 @@
-import FileAPI from '../lib/api/fileApi';
+import FileAPI from '@/api/fileApi';
 import { 
   FileMetadata, 
   FileResponse, 
@@ -6,13 +6,13 @@ import {
   UploadFileParams,
   ListFilesParams,
   DeleteFileParams 
-} from '../types/files';
+} from '@/interfaces/files';
 
 class FileService {
   private api: FileAPI;
 
-  constructor(baseUrl: string) {
-    this.api = new FileAPI(baseUrl);
+  constructor() {
+    this.api = new FileAPI();
   }
 
   async uploadFile(params: UploadFileParams): Promise<FileResponse> {

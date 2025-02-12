@@ -6,63 +6,58 @@ import {
   ListFilesParams,
   DeleteFileParams,
   ErrorResponse 
-} from '../../types/files';
+} from '@/interfaces/files';
 import { getConfig } from './config';
+import * as apiClient from '@/utils/apiClient';
 
 class FileAPI {
-  private baseUrl: string;
   private apiPrefix: string;
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
+  constructor() {
     this.apiPrefix = getConfig().apiPrefix;
   }
 
   private getUrl(path: string): string {
-    return `${this.baseUrl}${this.apiPrefix}/files${path}`;
+    return `${this.apiPrefix}/files${path}`;
   }
 
   async uploadFile({ phone_number, repository, file }: UploadFileParams): Promise<FileResponse> {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(this.getUrl(`/${phone_number}/${repository}`), {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const error: ErrorResponse = await response.json();
-      throw new Error(error.detail);
+    try {
+      const { data } = await apiClient.post<FileResponse>(this.getUrl(`/${phone_number}/${repository}`), formData);
+      return data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to upload file: ${error.message}`);
+      }
+      throw new Error('Failed to upload file: Unknown error occurred');
     }
-
-    return response.json();
   }
 
   async listFiles({ phone_number, repository }: ListFilesParams): Promise<FileList> {
-    const response = await fetch(this.getUrl(`/${phone_number}/${repository}`), {
-      method: 'GET',
-    });
-
-    if (!response.ok) {
-      const error: ErrorResponse = await response.json();
-      throw new Error(error.detail);
+    try {
+      const { data } = await apiClient.get<FileList>(this.getUrl(`/${phone_number}/${repository}`));
+      return data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to list files: ${error.message}`);
+      }
+      throw new Error('Failed to list files: Unknown error occurred');
     }
-
-    return response.json();
   }
 
   async deleteFile({ phone_number, repository, filename }: DeleteFileParams): Promise<{ message: string; filename: string }> {
-    const response = await fetch(this.getUrl(`/${phone_number}/${repository}/${filename}`), {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      const error: ErrorResponse = await response.json();
-      throw new Error(error.detail);
+    try {
+      const { data } = await apiClient.del<{ message: string; filename: string }>(this.getUrl(`/${phone_number}/${repository}/${filename}`));
+      return data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to delete file: ${error.message}`);
+      }
+      throw new Error('Failed to delete file: Unknown error occurred');
     }
-
-    return response.json();
   }
 }
 

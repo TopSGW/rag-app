@@ -7,102 +7,60 @@ import {
   ListRepositoriesParams,
   RepositoryError
 } from '@/types/repository';
+import * as apiClient from '@/utils/apiClient';
+import { BACKEND_URL } from '@/config/api';
 
 class RepositoryAPI {
-  private baseUrl: string;
   private apiPrefix: string;
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
+  constructor() {
     this.apiPrefix = '/api/v1';
   }
 
   private getUrl(path: string): string {
-    return `${this.baseUrl}${this.apiPrefix}/repositories${path}`;
+    return `${this.apiPrefix}/repositories${path}`;
   }
 
-  private async handleResponse<T>(response: Response): Promise<T> {
-    if (!response.ok) {
-      const errorData = await response.json() as RepositoryError;
-      throw new Error(errorData.detail || 'An error occurred while processing your request');
+  private handleError(error: unknown, action: string): never {
+    if (error instanceof Error) {
+      throw new Error(`Failed to ${action}: ${error.message}`);
     }
-    return response.json() as Promise<T>;
+    throw new Error(`Failed to ${action}: Unknown error occurred`);
   }
 
   async createRepository({ phone_number, name }: CreateRepositoryParams): Promise<RepositoryResponse> {
     try {
-      const response = await fetch(this.getUrl(`/${phone_number}`), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name }),
-      });
-
-      return this.handleResponse<RepositoryResponse>(response);
+      const { data } = await apiClient.post<RepositoryResponse>(this.getUrl(`/${phone_number}`), { name });
+      return data;
     } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to create repository: ${error.message}`);
-      }
-      throw new Error('Failed to create repository: Unknown error occurred');
+      this.handleError(error, 'create repository');
     }
   }
 
   async listRepositories({ phone_number }: ListRepositoriesParams): Promise<Repository[]> {
     try {
-      const response = await fetch(this.getUrl(`/${phone_number}`), {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-
-      const data = await this.handleResponse<Repository[]>(response);
-      // Initialize an empty array if repositories is undefined
-      console.log(data)
+      const { data } = await apiClient.get<Repository[]>(this.getUrl(`/${phone_number}`));
       return data || [];
     } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to list repositories: ${error.message}`);
-      }
-      throw new Error('Failed to list repositories: Unknown error occurred');
+      this.handleError(error, 'list repositories');
     }
   }
 
   async updateRepository({ phone_number, repository_name, new_name }: UpdateRepositoryParams): Promise<RepositoryResponse> {
     try {
-      const response = await fetch(this.getUrl(`/${phone_number}/${repository_name}`), {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name: new_name }),
-      });
-
-      return this.handleResponse<RepositoryResponse>(response);
+      const { data } = await apiClient.put<RepositoryResponse>(this.getUrl(`/${phone_number}/${repository_name}`), { name: new_name });
+      return data;
     } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to update repository: ${error.message}`);
-      }
-      throw new Error('Failed to update repository: Unknown error occurred');
+      this.handleError(error, 'update repository');
     }
   }
 
   async deleteRepository({ phone_number, repository_name }: DeleteRepositoryParams): Promise<{ message: string }> {
     try {
-      const response = await fetch(this.getUrl(`/${phone_number}/${repository_name}`), {
-        method: 'DELETE',
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-
-      return this.handleResponse<{ message: string }>(response);
+      const { data } = await apiClient.del<{ message: string }>(this.getUrl(`/${phone_number}/${repository_name}`));
+      return data;
     } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to delete repository: ${error.message}`);
-      }
-      throw new Error('Failed to delete repository: Unknown error occurred');
+      this.handleError(error, 'delete repository');
     }
   }
 }

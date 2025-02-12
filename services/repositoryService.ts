@@ -1,4 +1,4 @@
-import RepositoryAPI from '../lib/api/repositoryApi';
+import RepositoryAPI from '@/api/repositoryApi';
 import {
   Repository,
   RepositoryResponse,
@@ -6,7 +6,7 @@ import {
   UpdateRepositoryParams,
   DeleteRepositoryParams,
   ListRepositoriesParams,
-} from '../types/repository';
+} from '@/interfaces/repository';
 
 class RepositoryService {
   private api: RepositoryAPI;
@@ -14,8 +14,8 @@ class RepositoryService {
   private readonly NAME_MAX_LENGTH = 50;
   private readonly NAME_REGEX = /^[a-zA-Z0-9-_]+$/;
 
-  constructor(baseUrl: string) {
-    this.api = new RepositoryAPI(baseUrl);
+  constructor() {
+    this.api = new RepositoryAPI();
   }
 
   private validateRepositoryName(name: string): void {

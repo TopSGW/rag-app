@@ -5,8 +5,9 @@ import {
   RegisterUserParams,
   UpdatePhoneParams,
   GetUserParams
-} from '../../types/user';
+} from '../interfaces/user';
 import { getConfig } from './config';
+import * as apiClient from '../utils/apiClient';
 
 class UserAPI {
   private config;
@@ -18,7 +19,7 @@ class UserAPI {
   private getUrl(path: string): string {
     // Ensure path starts with slash
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    return `${this.config.baseUrl}${this.config.apiPrefix}/users${normalizedPath}`;
+    return `${this.config.apiPrefix}/users${normalizedPath}`;
   }
 
   private cleanPhoneNumber(phone: string): string {
@@ -30,69 +31,53 @@ class UserAPI {
 
   async registerUser({ phone_number }: RegisterUserParams): Promise<UserResponse> {
     const cleanedPhone = this.cleanPhoneNumber(phone_number);
-    const response = await fetch(this.getUrl('/register'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ phone_number: cleanedPhone }),
-    });
-
-    if (!response.ok) {
-      const error: UserError = await response.json();
-      throw new Error(error.detail);
+    try {
+      const { data } = await apiClient.post<UserResponse>(this.getUrl('/register'), { phone_number: cleanedPhone });
+      return data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to register user: ${error.message}`);
+      }
+      throw new Error('Failed to register user: Unknown error occurred');
     }
-
-    return response.json();
   }
 
   async loginUser({ phone_number }: RegisterUserParams): Promise<UserResponse> {
     const cleanedPhone = this.cleanPhoneNumber(phone_number);
-    const response = await fetch(this.getUrl('/login'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ phone_number: cleanedPhone }),
-    });
-
-    if (!response.ok) {
-      const error: UserError = await response.json();
-      throw new Error(error.detail);
+    try {
+      const { data } = await apiClient.post<UserResponse>(this.getUrl('/login'), { phone_number: cleanedPhone });
+      return data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to login user: ${error.message}`);
+      }
+      throw new Error('Failed to login user: Unknown error occurred');
     }
-
-    return response.json();
   }
 
   async updatePhoneNumber({ user_id, phone_number }: UpdatePhoneParams): Promise<UserResponse> {
     const cleanedPhone = this.cleanPhoneNumber(phone_number);
-    const response = await fetch(this.getUrl(`/${user_id}/phone`), {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ phone_number: cleanedPhone }),
-    });
-
-    if (!response.ok) {
-      const error: UserError = await response.json();
-      throw new Error(error.detail);
+    try {
+      const { data } = await apiClient.put<UserResponse>(this.getUrl(`/${user_id}/phone`), { phone_number: cleanedPhone });
+      return data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to update phone number: ${error.message}`);
+      }
+      throw new Error('Failed to update phone number: Unknown error occurred');
     }
-
-    return response.json();
   }
 
   async getUser({ user_id }: GetUserParams): Promise<UserResponse> {
-    const response = await fetch(this.getUrl(`/${user_id}`), {
-      method: 'GET',
-    });
-
-    if (!response.ok) {
-      const error: UserError = await response.json();
-      throw new Error(error.detail);
+    try {
+      const { data } = await apiClient.get<UserResponse>(this.getUrl(`/${user_id}`));
+      return data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to get user: ${error.message}`);
+      }
+      throw new Error('Failed to get user: Unknown error occurred');
     }
-
-    return response.json();
   }
 
   async validatePhoneNumber(phone_number: string): Promise<boolean> {

@@ -1,7 +1,7 @@
 import React, { createContext, useReducer, useContext, ReactNode, useCallback, useRef } from 'react';
 import FileService from '../services/fileService';
-import { getConfig } from '../lib/api/config';
-import { FileMetadata, FileList } from '../types/files';
+import { getConfig } from '@/api/config';
+import { FileMetadata, FileList } from '../interfaces/files';
 
 interface FileUploadState {
   isLoading: boolean;
@@ -67,7 +67,7 @@ interface FileUploadProviderProps {
 
 export const FileUploadProvider: React.FC<FileUploadProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(fileUploadReducer, initialState);
-  const fileService = new FileService(getConfig().baseUrl);
+  const fileService = new FileService();
   const operationInProgress = useRef(false);
 
   const setRepository = useCallback((repository: string) => {

@@ -2,8 +2,8 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import * as SecureStore from 'expo-secure-store';
 import { useAuth } from './AuthContext';
 import RepositoryService from '../services/repositoryService';
-import { getConfig } from '../lib/api/config';
-import { Repository } from '../types/repository';
+import { getConfig } from '../api/config';
+import { Repository } from '../interfaces/repository';
 
 interface RepositoryState {
   repositories: Repository[];

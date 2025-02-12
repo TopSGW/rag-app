@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useFileUpload } from '../contexts/FileUploadContext';
-import { FileMetadata } from '../types/files';
-import { getConfig } from '../lib/api/config';
+import { FileMetadata } from '../interfaces/files';
+import { getConfig } from '../api/config';
 
 interface UploadProgress {
   loaded: number;

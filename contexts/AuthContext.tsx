@@ -1,15 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Alert } from 'react-native';
+import { saveToken, getToken as getStoredToken, removeToken } from '../utils/tokenStorage';
 
 type AuthContextType = {
   isAuthenticated: boolean;
   authenticate: () => Promise<void>;
   logout: () => void;
   isBiometricSupported: boolean;
-  setToken: (token: string) => void;
-  getToken: () => string | null;
-  clearToken: () => void;
+  setToken: (token: string) => Promise<void>;
+  getToken: () => Promise<string | null>;
+  clearToken: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -22,10 +23,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isBiometricSupported, setIsBiometricSupported] = useState(false);
   const [token, setTokenState] = useState<string | null>(null);
 
-  // Check biometric support on component mount
+  // Check biometric support and load token on component mount
   useEffect(() => {
     checkBiometricSupport();
+    loadToken();
   }, []);
+
+  const loadToken = async () => {
+    const storedToken = await getStoredToken();
+    if (storedToken) {
+      setTokenState(storedToken);
+      setIsAuthenticated(true);
+    }
+  };
 
   const checkBiometricSupport = async () => {
     try {
@@ -93,20 +103,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     setIsAuthenticated(false);
-    clearToken();
+    await clearToken();
   };
 
-  const setToken = (newToken: string) => {
+  const setToken = async (newToken: string) => {
+    await saveToken(newToken);
     setTokenState(newToken);
   };
 
-  const getToken = () => {
-    return token;
+  const getToken = async () => {
+    return await getStoredToken();
   };
 
-  const clearToken = () => {
+  const clearToken = async () => {
+    await removeToken();
     setTokenState(null);
   };
 
