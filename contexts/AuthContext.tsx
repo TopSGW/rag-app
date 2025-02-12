@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { router } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Alert } from 'react-native';
 
@@ -8,6 +7,9 @@ type AuthContextType = {
   authenticate: () => Promise<void>;
   logout: () => void;
   isBiometricSupported: boolean;
+  setToken: (token: string) => void;
+  getToken: () => string | null;
+  clearToken: () => void;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -18,20 +20,12 @@ const isTestEnvironment = __DEV__;
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isBiometricSupported, setIsBiometricSupported] = useState(false);
+  const [token, setTokenState] = useState<string | null>(null);
 
   // Check biometric support on component mount
   useEffect(() => {
     checkBiometricSupport();
   }, []);
-
-  // Handle navigation based on auth state
-  useEffect(() => {
-    if (isAuthenticated) {
-      router.replace('/main');
-    } else {
-      router.replace('/biometric');
-    }
-  }, [isAuthenticated]);
 
   const checkBiometricSupport = async () => {
     try {
@@ -101,6 +95,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     setIsAuthenticated(false);
+    clearToken();
+  };
+
+  const setToken = (newToken: string) => {
+    setTokenState(newToken);
+  };
+
+  const getToken = () => {
+    return token;
+  };
+
+  const clearToken = () => {
+    setTokenState(null);
   };
 
   return (
@@ -110,6 +117,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authenticate,
         logout,
         isBiometricSupported,
+        setToken,
+        getToken,
+        clearToken,
       }}
     >
       {children}
