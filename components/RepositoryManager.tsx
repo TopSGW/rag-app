@@ -7,10 +7,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { router } from 'expo-router';
 import { useRepository } from '@/contexts/RepositoryContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { ThemedView } from './ThemedView';
@@ -18,8 +16,8 @@ import { ThemedText } from './ThemedText';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Repository } from '@/types/repository';
 
-export default function RepositoryManager() {
-  const { isAuthenticated, user } = useAuth();
+export function RepositoryManager() {
+  const { isAuthenticated } = useAuth();
   const {
     repositories,
     currentRepository,
@@ -39,12 +37,11 @@ export default function RepositoryManager() {
   const colorScheme = useColorScheme();
   const inputRef = useRef<TextInput>(null);
 
-  // Load repositories when component mounts
   useEffect(() => {
-    if (isAuthenticated && user?.phone_number) {
+    if (isAuthenticated) {
       refreshRepositories();
     }
-  }, [isAuthenticated, user?.phone_number, refreshRepositories]);
+  }, [isAuthenticated, refreshRepositories]);
 
   useEffect(() => {
     if (editingRepo) {
@@ -52,20 +49,13 @@ export default function RepositoryManager() {
     }
   }, [editingRepo]);
 
-  // Handle unauthenticated state
-  if (!isAuthenticated || !user?.phone_number) {
+  if (!isAuthenticated) {
     return (
       <ThemedView style={styles.container}>
         <View style={styles.messageContainer}>
           <ThemedText style={styles.messageText}>
-            Please log in to access your repositories
+            Please authenticate to access your repositories
           </ThemedText>
-          <TouchableOpacity
-            style={[styles.button, styles.loginButton]}
-            onPress={() => router.push('/auth/login')}
-          >
-            <ThemedText style={styles.buttonText}>Go to Login</ThemedText>
-          </TouchableOpacity>
         </View>
       </ThemedView>
     );
@@ -148,128 +138,123 @@ export default function RepositoryManager() {
   }, []);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-    >
-      <ThemedView style={styles.container}>
-        {error && (
-          <View style={styles.errorContainer}>
-            <ThemedText style={styles.errorText}>{error}</ThemedText>
-            <TouchableOpacity onPress={clearError} style={styles.clearErrorButton}>
-              <ThemedText style={styles.clearErrorText}>Dismiss</ThemedText>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <View style={styles.createContainer}>
-          <TextInput
-            style={[
-              styles.input,
-              { color: colorScheme === 'dark' ? '#fff' : '#000' },
-              { backgroundColor: colorScheme === 'dark' ? '#333' : '#f5f5f5' },
-            ]}
-            value={newRepoName}
-            onChangeText={setNewRepoName}
-            placeholder="New repository name"
-            placeholderTextColor={colorScheme === 'dark' ? '#999' : '#666'}
-            onSubmitEditing={handleCreateRepository}
-          />
-          <TouchableOpacity
-            style={[styles.button, styles.createButton]}
-            onPress={handleCreateRepository}
-            disabled={isLoading}
-          >
-            <ThemedText style={styles.buttonText}>Create</ThemedText>
+    <ThemedView style={styles.container}>
+      {error && (
+        <View style={styles.errorContainer}>
+          <ThemedText style={styles.errorText}>{error}</ThemedText>
+          <TouchableOpacity onPress={clearError} style={styles.clearErrorButton}>
+            <ThemedText style={styles.clearErrorText}>Dismiss</ThemedText>
           </TouchableOpacity>
         </View>
+      )}
 
-        {isLoading ? (
-          <ActivityIndicator size="large" color="#2196f3" style={styles.loader} />
-        ) : repositories.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <ThemedText style={styles.emptyText}>
-              No repositories found. Create one to get started!
-            </ThemedText>
-          </View>
-        ) : (
-          <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
-            {repositories.map((repo) => (
-              <View key={repo.id} style={styles.repositoryItem}>
-                {editingRepo?.id === repo.id ? (
-                  <View style={styles.editContainer}>
-                    <TextInput
-                      ref={inputRef}
-                      style={[
-                        styles.input,
-                        { color: colorScheme === 'dark' ? '#fff' : '#000' },
-                        { backgroundColor: colorScheme === 'dark' ? '#333' : '#f5f5f5' },
-                      ]}
-                      value={editName}
-                      onChangeText={setEditName}
-                      placeholder="Repository name"
-                      placeholderTextColor={colorScheme === 'dark' ? '#999' : '#666'}
-                      onSubmitEditing={handleUpdateRepository}
-                    />
-                    <View style={styles.editActions}>
-                      <TouchableOpacity
-                        style={[styles.button, styles.saveButton]}
-                        onPress={handleUpdateRepository}
-                      >
-                        <ThemedText style={styles.buttonText}>Save</ThemedText>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.button, styles.cancelButton]}
-                        onPress={cancelEditing}
-                      >
-                        <ThemedText style={styles.buttonText}>Cancel</ThemedText>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.repositoryContent}>
+      <View style={styles.createContainer}>
+        <TextInput
+          style={[
+            styles.input,
+            { color: colorScheme === 'dark' ? '#fff' : '#000' },
+            { backgroundColor: colorScheme === 'dark' ? '#333' : '#f5f5f5' },
+          ]}
+          value={newRepoName}
+          onChangeText={setNewRepoName}
+          placeholder="New repository name"
+          placeholderTextColor={colorScheme === 'dark' ? '#999' : '#666'}
+          onSubmitEditing={handleCreateRepository}
+        />
+        <TouchableOpacity
+          style={[styles.button, styles.createButton]}
+          onPress={handleCreateRepository}
+          disabled={isLoading}
+        >
+          <ThemedText style={styles.buttonText}>Create</ThemedText>
+        </TouchableOpacity>
+      </View>
+
+      {isLoading ? (
+        <ActivityIndicator size="large" color="#2196f3" style={styles.loader} />
+      ) : repositories.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <ThemedText style={styles.emptyText}>
+            No repositories found. Create one to get started!
+          </ThemedText>
+        </View>
+      ) : (
+        <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+          {repositories.map((repo) => (
+            <View key={repo.id} style={styles.repositoryItem}>
+              {editingRepo?.id === repo.id ? (
+                <View style={styles.editContainer}>
+                  <TextInput
+                    ref={inputRef}
+                    style={[
+                      styles.input,
+                      { color: colorScheme === 'dark' ? '#fff' : '#000' },
+                      { backgroundColor: colorScheme === 'dark' ? '#333' : '#f5f5f5' },
+                    ]}
+                    value={editName}
+                    onChangeText={setEditName}
+                    placeholder="Repository name"
+                    placeholderTextColor={colorScheme === 'dark' ? '#999' : '#666'}
+                    onSubmitEditing={handleUpdateRepository}
+                  />
+                  <View style={styles.editActions}>
                     <TouchableOpacity
-                      style={styles.nameContainer}
-                      onPress={() => setCurrentRepository(repo)}
+                      style={[styles.button, styles.saveButton]}
+                      onPress={handleUpdateRepository}
                     >
-                      <ThemedText
-                        style={[
-                          styles.repositoryName,
-                          currentRepository?.id === repo.id && styles.selectedRepository,
-                        ]}
-                      >
-                        {repo.name}
-                      </ThemedText>
+                      <ThemedText style={styles.buttonText}>Save</ThemedText>
                     </TouchableOpacity>
-                    <View style={styles.actions}>
-                      <TouchableOpacity
-                        style={[styles.button, styles.editButton]}
-                        onPress={() => startEditing(repo)}
-                      >
-                        <ThemedText style={styles.buttonText}>Edit</ThemedText>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.button, styles.deleteButton]}
-                        onPress={() => handleDeleteRepository(repo)}
-                      >
-                        <ThemedText style={styles.buttonText}>Delete</ThemedText>
-                      </TouchableOpacity>
-                    </View>
+                    <TouchableOpacity
+                      style={[styles.button, styles.cancelButton]}
+                      onPress={cancelEditing}
+                    >
+                      <ThemedText style={styles.buttonText}>Cancel</ThemedText>
+                    </TouchableOpacity>
                   </View>
-                )}
-              </View>
-            ))}
-          </ScrollView>
-        )}
-      </ThemedView>
-    </KeyboardAvoidingView>
+                </View>
+              ) : (
+                <View style={styles.repositoryContent}>
+                  <TouchableOpacity
+                    style={styles.nameContainer}
+                    onPress={() => setCurrentRepository(repo)}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.repositoryName,
+                        currentRepository?.id === repo.id && styles.selectedRepository,
+                      ]}
+                    >
+                      {repo.name}
+                    </ThemedText>
+                  </TouchableOpacity>
+                  <View style={styles.actions}>
+                    <TouchableOpacity
+                      style={[styles.button, styles.editButton]}
+                      onPress={() => startEditing(repo)}
+                    >
+                      <ThemedText style={styles.buttonText}>Edit</ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.button, styles.deleteButton]}
+                      onPress={() => handleDeleteRepository(repo)}
+                    >
+                      <ThemedText style={styles.buttonText}>Delete</ThemedText>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+          ))}
+        </ScrollView>
+      )}
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: 20,
   },
   messageContainer: {
     flex: 1,
@@ -281,10 +266,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
     marginBottom: 20,
-  },
-  loginButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 30,
   },
   createContainer: {
     flexDirection: 'row',

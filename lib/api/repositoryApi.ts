@@ -1,7 +1,6 @@
 import {
   Repository,
   RepositoryResponse,
-  RepositoryListResponse,
   CreateRepositoryParams,
   UpdateRepositoryParams,
   DeleteRepositoryParams,
@@ -58,9 +57,10 @@ class RepositoryAPI {
         },
       });
 
-      const data = await this.handleResponse<RepositoryListResponse>(response);
+      const data = await this.handleResponse<Repository[]>(response);
       // Initialize an empty array if repositories is undefined
-      return data?.repositories || [];
+      console.log(data)
+      return data || [];
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to list repositories: ${error.message}`);

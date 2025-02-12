@@ -126,6 +126,7 @@ export function RepositoryProvider({ children }: { children: React.ReactNode }) 
       const repositories = await repositoryService.listRepositories({
         phone_number: user.phone_number
       });
+      console.log(repositories)
       setState(prev => ({ ...prev, repositories }));
     } catch (error) {
       setState(prev => ({

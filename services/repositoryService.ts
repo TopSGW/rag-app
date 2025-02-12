@@ -71,11 +71,9 @@ class RepositoryService {
   async listRepositories(params: ListRepositoriesParams): Promise<Repository[]> {
     try {
       this.validatePhoneNumber(params.phone_number);
-
       const repositories = await this.api.listRepositories({
         phone_number: params.phone_number.trim(),
       });
-
       return repositories.map(repo => this.transformRepositoryResponse(repo));
     } catch (error) {
       if (error instanceof Error) {

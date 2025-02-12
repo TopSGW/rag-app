@@ -18,10 +18,6 @@ export interface RepositoryResponse {
   updated_at: string;
 }
 
-export interface RepositoryListResponse {
-  repositories: Repository[];
-}
-
 export interface CreateRepositoryParams {
   phone_number: string;
   name: string;
