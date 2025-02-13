@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, TextInput, Button, FlatList, Text, StyleSheet } from 'react-native';
+import { View, TextInput, FlatList, Text, StyleSheet, Alert } from 'react-native';
 import { getApiUrl } from '@/config/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity } from 'react-native';
-import { router, Redirect } from 'expo-router';
+import { router } from 'expo-router';
+import TypingIndicator from '../common/TypingIndicator';
 
 interface Message {
+  id: string;
   content: string;
   sender: 'user' | 'bot';
+  loading?: boolean;
 }
 
 const ChatComponent: React.FC = () => {
@@ -17,62 +20,138 @@ const ChatComponent: React.FC = () => {
   const [wsAuth, setWsAuth] = useState<WebSocket | null>(null);
   const [wsChat, setWsChat] = useState<WebSocket | null>(null);
   const flatListRef = useRef<FlatList>(null);
-  const { getToken } = useAuth();
+  const { getToken, setToken, clearToken } = useAuth();
 
-  useEffect(() => {
-    const websocketUrl = getApiUrl(true); // Use WebSocket URL
-  
-    // Set up the authentication WebSocket
+  // Initialize Auth WebSocket
+  const initializeAuthWebSocket = () => {
+    const websocketUrl = getApiUrl(true);
     const authWs = new WebSocket(`${websocketUrl}/ws/auth-dialogue`);
+    
+    authWs.onopen = () => {
+      console.log("Auth WebSocket connected");
+    };
+
+    authWs.onmessage = async (event) => {
+      console.log("Auth message received:", event.data);
+      const data = JSON.parse(event.data);
+      if (data.token) {
+        await setToken(data.token);
+        initializeChatWebSocket(data.token);
+      }
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.loading ? { ...msg, content: data.message, loading: false } : msg
+        )
+      );
+    };
+
+    authWs.onerror = (error) => {
+      console.error("Auth WebSocket error:", error);
+    };
+
+    authWs.onclose = () => {
+      console.log("Auth WebSocket closed");
+    };
+
     setWsAuth(authWs);
-  
-    // Define an async function to get the token and set up the chat WebSocket
-    const initChatSocket = async () => {
-      const token = await getToken(); // Await the resolved token
-      if (token) {
-        const chatWs = new WebSocket(`${websocketUrl}/ws/chat?token=${token}`);
-        setWsChat(chatWs);
+  };
+
+  // Initialize Chat WebSocket with token
+  const initializeChatWebSocket = (token: string) => {
+    const websocketUrl = getApiUrl(true);
+    const chatWs = new WebSocket(`${websocketUrl}/ws/chat?token=${token}`);
+    
+    chatWs.onopen = () => {
+      console.log("Chat WebSocket connected");
+    };
+
+    chatWs.onmessage = (event) => {
+      console.log("Chat message received:", event.data);
+      const data = JSON.parse(event.data);
+      if (data.error === "Token has expired") {
+        handleTokenExpiration();
+      } else {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.loading ? { ...msg, content: data.message, loading: false } : msg
+          )
+        );
       }
     };
-  
-    // Call the async function
-    initChatSocket();
-  
-    return () => {
-      authWs.close();
-      if (wsChat) wsChat.close();
+
+    chatWs.onerror = (error) => {
+      console.error("Chat WebSocket error:", error);
     };
-  }, [getToken]);
+
+    chatWs.onclose = (event) => {
+      console.log("Chat WebSocket closed with code:", event.code);
+      if (event.code === 1008) {
+        // Token expired or invalid
+        handleTokenExpiration();
+      } else {
+        // Attempt reconnection after a delay
+        setTimeout(() => {
+          getToken().then(token => {
+            if (token) {
+              initializeChatWebSocket(token);
+            }
+          });
+        }, 3000);
+      }
+    };
+    setWsChat(chatWs);
+  };
 
   useEffect(() => {
-    if (wsAuth) {
-      wsAuth.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        setMessages(prev => [...prev, { content: data.message, sender: 'bot' }]);
-      };
-    }
+    initializeAuthWebSocket();
+    return () => {
+      wsAuth?.close();
+      wsChat?.close();
+    };
+  }, []);
 
-    if (wsChat) {
-      wsChat.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        setMessages(prev => [...prev, { content: data.message, sender: 'bot' }]);
-      };
-    }
-  }, [wsAuth, wsChat]);
+  const handleTokenExpiration = async () => {
+    await clearToken();
+    Alert.alert(
+      "Session Expired",
+      "Your session has expired. Please sign in again.",
+      [{ text: "OK", onPress: () => router.replace('/biometric') }]
+    );
+  };
 
   const sendMessage = async () => {
     if (inputMessage.trim() === '') return;
   
-    // Add user message to the list
-    setMessages(prev => [...prev, { content: inputMessage, sender: 'user' }]);
+    const newMessage: Message = {
+      id: Date.now().toString(),
+      content: inputMessage,
+      sender: 'user'
+    };
+
+    const loadingMessage: Message = {
+      id: (Date.now() + 1).toString(),
+      content: '',
+      sender: 'bot',
+      loading: true
+    };
   
-    // Await the token value
+    setMessages(prev => [...prev, newMessage, loadingMessage]);
+  
     const token = await getToken();
+    console.log("Sending message with token:", token);
     
     if (!token) {
-      wsAuth?.send(JSON.stringify({ user_input: inputMessage }));
+      if (wsAuth && wsAuth.readyState === WebSocket.OPEN) {
+        wsAuth.send(JSON.stringify({ user_input: inputMessage }));
+      } else {
+        console.warn("Auth WebSocket not open");
+      }
     } else {
-      wsChat?.send(JSON.stringify({ user_input: inputMessage }));
+      if (wsChat && wsChat.readyState === WebSocket.OPEN) {
+        wsChat.send(JSON.stringify({ user_input: inputMessage }));
+      } else {
+        console.warn("Chat WebSocket not open");
+      }
     }
   
     setInputMessage('');
@@ -82,24 +161,32 @@ const ChatComponent: React.FC = () => {
     router.push('/repositoryManagement');
   };
   
+  const renderMessage = ({ item }: { item: Message }) => {
+    if (item.loading) {
+      return <TypingIndicator />;
+    }
+    return (
+      <View style={[styles.messageBubble, item.sender === 'user' ? styles.userMessage : styles.botMessage]}>
+        <Text style={[styles.messageText, item.sender === 'bot' ? styles.botMessageText : null]}>
+          {item.content}
+        </Text>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <FlatList
         ref={flatListRef}
         data={messages}
-        keyExtractor={(item, index) => index.toString()}
-        renderItem={({ item }) => (
-          <View style={[styles.messageBubble, item.sender === 'user' ? styles.userMessage : styles.botMessage]}>
-            <Text style={styles.messageText}>{item.content}</Text>
-          </View>
-        )}
+        keyExtractor={(item) => item.id}
+        renderItem={renderMessage}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
       <View style={styles.inputContainer}>
         <TouchableOpacity style={styles.uploadButton} onPress={handleUpload}>
           <Ionicons name="cloud-upload-sharp" size={24} color="black" />
         </TouchableOpacity>
-
         <TextInput
           style={styles.input}
           value={inputMessage}
@@ -123,7 +210,7 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     padding: 10,
-    borderRadius: 10,
+    borderRadius: 20,
     marginVertical: 5,
     maxWidth: '80%',
   },
@@ -137,6 +224,9 @@ const styles = StyleSheet.create({
   },
   messageText: {
     color: '#FFFFFF',
+  },
+  botMessageText: {
+    color: '#000000',
   },
   inputContainer: {
     flexDirection: 'row',
@@ -159,16 +249,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   uploadButton: {
-    // position: 'absolute',
-    // bottom: 20,
-    // right: 20,
     width: 50,
     height: 50,
     borderRadius: 25,
     backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
-
   },
 });
 

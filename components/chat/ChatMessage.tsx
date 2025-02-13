@@ -23,7 +23,7 @@ const styles = StyleSheet.create({
   messageBubble: {
     maxWidth: '80%',
     padding: 10,
-    borderRadius: 20,
+    borderRadius: 10,
     marginBottom: 10,
   },
   userMessage: {
@@ -33,6 +33,7 @@ const styles = StyleSheet.create({
   botMessage: {
     alignSelf: 'flex-start',
     backgroundColor: '#E5E5EA',
+    color: '#333'
   },
 });
 
@@ -42,14 +43,14 @@ const markdownStyles = {
     paragraph: { fontSize: 16 },
     link: { color: '#FFFFFF', textDecorationLine: 'underline' },
     code_inline: { backgroundColor: 'rgba(255, 255, 255, 0.2)', color: '#FFFFFF' },
-    code_block: { backgroundColor: 'rgba(255, 255, 255, 0.2)', color: '#FFFFFF', padding: 8, borderRadius: 4 },
+    code_block: { backgroundColor: 'rgba(255, 255, 255, 0.2)', color: '#FFFFFF', padding: 8, borderRadius: 2 },
   },
   bot: {
     body: { color: '#000000' },
     paragraph: { fontSize: 16 },
     link: { color: '#007AFF' },
     code_inline: { backgroundColor: 'rgba(0, 0, 0, 0.05)', color: '#000000' },
-    code_block: { backgroundColor: 'rgba(0, 0, 0, 0.05)', color: '#000000', padding: 8, borderRadius: 4 },
+    code_block: { backgroundColor: 'rgba(0, 0, 0, 0.05)', color: '#000000', padding: 8, borderRadius: 2 },
   },
 };
 
