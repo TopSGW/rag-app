@@ -8,16 +8,21 @@ import {
   DeleteFileParams 
 } from '@/interfaces/files';
 
+export interface FileServiceConfig {
+  baseUrl: string;
+  // Add any other configuration parameters needed by FileAPI
+}
+
 class FileService {
   private api: FileAPI;
 
-  constructor() {
-    this.api = new FileAPI();
+  constructor(config: FileServiceConfig) {
+    this.api = new FileAPI(config.baseUrl);
   }
 
   async uploadFile(params: UploadFileParams): Promise<FileResponse> {
     try {
-      const response = await this.api.uploadFile(params);
+      const response = await this.api.uploadFile(params.phone_number, params.repository.toString(), params.file);
       return response;
     } catch (error) {
       if (error instanceof Error) {
@@ -29,7 +34,7 @@ class FileService {
 
   async listFiles(params: ListFilesParams): Promise<FileList> {
     try {
-      const response = await this.api.listFiles(params);
+      const response = await this.api.listFiles(params.phone_number, params.repository.toString());
       return response;
     } catch (error) {
       if (error instanceof Error) {
@@ -41,8 +46,8 @@ class FileService {
 
   async deleteFile(params: DeleteFileParams): Promise<{ message: string; filename: string }> {
     try {
-      const response = await this.api.deleteFile(params);
-      return response;
+      const response = await this.api.deleteFile(params.phone_number, params.repository.toString(), params.filename);
+      return { ...response, filename: params.filename };
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to delete file: ${error.message}`);

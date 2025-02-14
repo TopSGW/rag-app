@@ -1,4 +1,5 @@
 export interface FileMetadata {
+  id: string;
   filename: string;
   original_filename: string;
   file_size: number;

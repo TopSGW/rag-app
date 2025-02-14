@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, TextInput, FlatList, Text, StyleSheet, Alert } from 'react-native';
 import { getApiUrl } from '@/config/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,45 +22,10 @@ const ChatComponent: React.FC = () => {
   const flatListRef = useRef<FlatList>(null);
   const { getToken, setToken, clearToken } = useAuth();
 
-  // Initialize Auth WebSocket
-  const initializeAuthWebSocket = () => {
-    const websocketUrl = getApiUrl(true);
-    const authWs = new WebSocket(`${websocketUrl}/ws/auth-dialogue`);
-    
-    authWs.onopen = () => {
-      console.log("Auth WebSocket connected");
-    };
-
-    authWs.onmessage = async (event) => {
-      console.log("Auth message received:", event.data);
-      const data = JSON.parse(event.data);
-      if (data.token) {
-        await setToken(data.token);
-        initializeChatWebSocket(data.token);
-      }
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.loading ? { ...msg, content: data.message, loading: false } : msg
-        )
-      );
-    };
-
-    authWs.onerror = (error) => {
-      console.error("Auth WebSocket error:", error);
-    };
-
-    authWs.onclose = () => {
-      console.log("Auth WebSocket closed");
-    };
-
-    setWsAuth(authWs);
-  };
-
-  // Initialize Chat WebSocket with token
-  const initializeChatWebSocket = (token: string) => {
+  // Initialize Chat WebSocket (defined first so auth function can call it)
+  const initializeChatWebSocket = useCallback((token: string) => {
     const websocketUrl = getApiUrl(true);
     const chatWs = new WebSocket(`${websocketUrl}/ws/chat?token=${token}`);
-    
     chatWs.onopen = () => {
       console.log("Chat WebSocket connected");
     };
@@ -68,7 +33,7 @@ const ChatComponent: React.FC = () => {
     chatWs.onmessage = (event) => {
       console.log("Chat message received:", event.data);
       const data = JSON.parse(event.data);
-      if (data.error === "Token has expired") {
+      if (data.error === "Token has expired or is invalid") {
         handleTokenExpiration();
       } else {
         setMessages((prev) =>
@@ -99,15 +64,58 @@ const ChatComponent: React.FC = () => {
         }, 3000);
       }
     };
-    setWsChat(chatWs);
-  };
 
+    setWsChat(chatWs);
+  }, [getApiUrl, getToken]);
+
+  // Initialize Auth WebSocket
+  const initializeAuthWebSocket = useCallback(async () => {
+    const websocketUrl = getApiUrl(true);
+    const authWs = new WebSocket(`${websocketUrl}/ws/auth-dialogue`);
+    
+    authWs.onopen = () => {
+      console.log("Auth WebSocket connected");
+    };
+
+    authWs.onmessage = async (event) => {
+      console.log("Auth message received:", event.data);
+      const data = JSON.parse(event.data);
+      if (data.token) {
+        await setToken(data.token);
+        initializeChatWebSocket(data.token);
+      }
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.loading ? { ...msg, content: data.message, loading: false } : msg
+        )
+      );
+    };
+
+    authWs.onerror = (error) => {
+      console.error("Auth WebSocket error:", error);
+    };
+
+    authWs.onclose = (event) => {
+      console.log("Auth WebSocket closed with code:", event.code);
+      // Optionally add reconnection logic for auth WebSocket if needed.
+    };
+
+    const token = await getToken();
+    if(token) {
+      initializeChatWebSocket(token);
+    }
+
+    setWsAuth(authWs);
+  }, [getApiUrl, setToken, initializeChatWebSocket]);
+
+  // Initialize WebSocket connections once on mount
   useEffect(() => {
     initializeAuthWebSocket();
     return () => {
       wsAuth?.close();
       wsChat?.close();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleTokenExpiration = async () => {
@@ -127,7 +135,7 @@ const ChatComponent: React.FC = () => {
       content: inputMessage,
       sender: 'user'
     };
-
+  
     const loadingMessage: Message = {
       id: (Date.now() + 1).toString(),
       content: '',
@@ -139,24 +147,37 @@ const ChatComponent: React.FC = () => {
   
     const token = await getToken();
     console.log("Sending message with token:", token);
-    
+  
+    // If no token, use auth websocket instead
     if (!token) {
       if (wsAuth && wsAuth.readyState === WebSocket.OPEN) {
         wsAuth.send(JSON.stringify({ user_input: inputMessage }));
       } else {
         console.warn("Auth WebSocket not open");
       }
-    } else {
-      if (wsChat && wsChat.readyState === WebSocket.OPEN) {
+      setInputMessage('');
+      return;
+    }
+  
+    // If token exists, ensure the chat websocket is open before sending
+    if (wsChat) {
+      if (wsChat.readyState === WebSocket.OPEN) {
         wsChat.send(JSON.stringify({ user_input: inputMessage }));
+      } else if (wsChat.readyState === WebSocket.CONNECTING) {
+        // Wait until open, then send the message
+        wsChat.onopen = () => {
+          console.log("Chat WebSocket is now open. Sending buffered message.");
+          wsChat.send(JSON.stringify({ user_input: inputMessage }));
+        };
       } else {
         console.warn("Chat WebSocket not open");
       }
+    } else {
+      console.warn("Chat WebSocket instance is null");
     }
-  
     setInputMessage('');
   };
-
+  
   const handleUpload = () => {
     router.push('/repositoryManagement');
   };

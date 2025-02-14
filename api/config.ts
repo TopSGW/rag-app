@@ -9,7 +9,7 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 
 const config: APIConfig = {
   baseUrl: isDevelopment 
-    ? 'https://4c16-38-32-68-195.ngrok-free.app'  // Development API URL
+    ? 'https://23b5-38-32-68-195.ngrok-free.app'  // Development API URL
     : process.env.EXPO_PUBLIC_API_URL || 'https://api.production.com',  // Production API URL
   maxFileSize: 10 * 1024 * 1024, // 10MB in bytes
   allowedFileTypes: [

@@ -1,63 +1,107 @@
 import {
-  Repository,
   RepositoryResponse,
   CreateRepositoryParams,
   UpdateRepositoryParams,
   DeleteRepositoryParams,
   ListRepositoriesParams,
-  RepositoryError
-} from '@/types/repository';
+  GetRepositoryDetailsParams,
+  RepositoryError,
+  RepositoryErrorType
+} from '@/interfaces/repository';
 import * as apiClient from '@/utils/apiClient';
 import { BACKEND_URL } from '@/config/api';
+import axios from 'axios';
 
 class RepositoryAPI {
   private apiPrefix: string;
 
   constructor() {
-    this.apiPrefix = '/api/v1';
-  }
-
-  private getUrl(path: string): string {
-    return `${this.apiPrefix}/repositories${path}`;
+    this.apiPrefix = `${BACKEND_URL}/repositories`;
   }
 
   private handleError(error: unknown, action: string): never {
+    let errorType: RepositoryErrorType = 'UNKNOWN_ERROR';
+    let errorMessage = `Failed to ${action}: Unknown error occurred`;
+
     if (error instanceof Error) {
-      throw new Error(`Failed to ${action}: ${error.message}`);
+      if (error.message.includes('404')) {
+        errorType = 'NOT_FOUND';
+        errorMessage = `Repository not found while trying to ${action}`;
+      } else if (error.message.includes('401')) {
+        errorType = 'UNAUTHORIZED';
+        errorMessage = `Unauthorized: Please log in to ${action}`;
+      } else if (error.message.includes('403')) {
+        errorType = 'FORBIDDEN';
+        errorMessage = `Forbidden: You don't have permission to ${action}`;
+      } else {
+        errorMessage = `Failed to ${action}: ${error.message}`;
+      }
     }
-    throw new Error(`Failed to ${action}: Unknown error occurred`);
+
+    throw new RepositoryError(errorMessage, errorType);
   }
 
-  async createRepository({ phone_number, name }: CreateRepositoryParams): Promise<RepositoryResponse> {
+  async createRepository({ name }: CreateRepositoryParams, token: string | null): Promise<RepositoryResponse> {
     try {
-      const { data } = await apiClient.post<RepositoryResponse>(this.getUrl(`/${phone_number}`), { name });
+      const { data } = await axios.post<RepositoryResponse>(this.apiPrefix, { name }, {
+        headers: {
+          Authorization: `Bearer ${token}`,          
+        }
+      });
       return data;
     } catch (error) {
       this.handleError(error, 'create repository');
     }
   }
 
-  async listRepositories({ phone_number }: ListRepositoriesParams): Promise<Repository[]> {
+  async listRepositories(token: string | null): Promise<RepositoryResponse[]> {
     try {
-      const { data } = await apiClient.get<Repository[]>(this.getUrl(`/${phone_number}`));
+      // Pass the token in the request headers so the back-end can identify the current user
+      const { data } = await axios.get<RepositoryResponse[]>(this.apiPrefix, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       return data || [];
     } catch (error) {
       this.handleError(error, 'list repositories');
+      // Return an empty array or rethrow the error based on your error handling strategy
+    }  
+  }
+
+  async getRepositoryDetails(repository_id: number, token: string | null): Promise<RepositoryResponse> {
+    try {
+      const { data } = await axios.get<RepositoryResponse>(`${this.apiPrefix}/${repository_id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      return data;
+    } catch (error) {
+      this.handleError(error, 'get repository details');
     }
   }
 
-  async updateRepository({ phone_number, repository_name, new_name }: UpdateRepositoryParams): Promise<RepositoryResponse> {
+  async updateRepository(repository_id: number, { new_name }: UpdateRepositoryParams, token: string | null): Promise<RepositoryResponse> {
     try {
-      const { data } = await apiClient.put<RepositoryResponse>(this.getUrl(`/${phone_number}/${repository_name}`), { name: new_name });
+      const { data } = await axios.put<RepositoryResponse>(`${this.apiPrefix}/${repository_id}`, { name: new_name }, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       return data;
     } catch (error) {
       this.handleError(error, 'update repository');
     }
   }
 
-  async deleteRepository({ phone_number, repository_name }: DeleteRepositoryParams): Promise<{ message: string }> {
+  async deleteRepository(repository_id: number, token: string | null): Promise<{ message: string }> {
     try {
-      const { data } = await apiClient.del<{ message: string }>(this.getUrl(`/${phone_number}/${repository_name}`));
+      const { data } = await axios.delete<{ message: string }>(`${this.apiPrefix}/${repository_id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       return data;
     } catch (error) {
       this.handleError(error, 'delete repository');

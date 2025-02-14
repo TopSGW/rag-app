@@ -19,25 +19,34 @@ export interface RepositoryResponse {
 }
 
 export interface CreateRepositoryParams {
-  phone_number: string;
   name: string;
 }
 
 export interface UpdateRepositoryParams {
   phone_number: string;
-  repository_name: string;
+  repository_id: number;
   new_name: string;
 }
 
 export interface DeleteRepositoryParams {
   phone_number: string;
-  repository_name: string;
+  repository_id: number;
 }
 
 export interface ListRepositoriesParams {
   phone_number: string;
 }
 
-export interface RepositoryError {
-  detail: string;
+export interface GetRepositoryDetailsParams {
+  phone_number: string;
+  repository_id: number;
+}
+
+export type RepositoryErrorType = 'NOT_FOUND' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'UNKNOWN_ERROR';
+
+export class RepositoryError extends Error {
+  constructor(message: string, public type: RepositoryErrorType) {
+    super(message);
+    this.name = 'RepositoryError';
+  }
 }

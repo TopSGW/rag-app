@@ -1,204 +1,298 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  Modal,
+  TextInput,
+  RefreshControl,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
 import { router } from 'expo-router';
-import { useFileUploader } from '../hooks/useFileUploader';
+import axios from 'axios';
 import RepositoryAPI from '../api/repositoryApi';
-import { Repository } from '../interfaces/repository';
-import { FileMetadata } from '../interfaces/files';
+import { Repository, RepositoryError } from '../interfaces/repository';
 import { useAuth } from '../contexts/AuthContext';
+import { BACKEND_URL } from '@/config/api';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import FileManagement from '@/components/FileManagement';
 
-const API_BASE_URL = 'http://your-api-base-url'; // Replace with your actual API base URL
-const repositoryApi = new RepositoryAPI(API_BASE_URL);
+const repositoryApi = new RepositoryAPI();
 
-export default function RepositoryManagementScreen() {
-  const { user } = useAuth();
-  const { files, isUploading, uploadProgress, error, uploadFiles, deleteFile, refreshFiles, clearError } = useFileUploader();
+function RepositoryManagementScreen() {
+  const { getToken } = useAuth();
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRepository, setSelectedRepository] = useState<Repository | null>(null);
+  const [user, setUser] = useState<{ id: number; phone_number: string } | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
+  const [repoModalVisible, setRepoModalVisible] = useState(false);
+  const [newRepoName, setNewRepoName] = useState('');
+  const [refreshingRepos, setRefreshingRepos] = useState(false);
+  const [creatingRepo, setCreatingRepo] = useState(false);
+  const [repoDetailsLoading, setRepoDetailsLoading] = useState(false);
 
-  useEffect(() => {
-    loadRepositories();
-  }, []);
+  const fetchUser = async () => {
+    const token = await getToken();
+    if (!token) {
+      Alert.alert('Error', 'User token is missing. Please log in.');
+      setUserLoading(false);
+      return;
+    }
+    try {
+      const response = await axios.get(`${BACKEND_URL}/get_user`, {
+        params: { token }
+      });
+      console.log(response.data);
+      setUser(response.data);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        console.error('Error fetching user info:', error.response?.data || error.message);
+        if (error.response?.status === 422) {
+          Alert.alert('Error', 'Invalid token format. Please log in again.');
+        } else if (error.response?.status === 401) {
+          Alert.alert('Error', 'Authentication failed. Please log in again.');
+        } else {
+          Alert.alert('Error', 'Failed to fetch user info. Please try again.');
+        }
+      } else {
+        console.error('Error fetching user info:', error);
+        Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      setUserLoading(false);
+    }
+  };
 
-  const loadRepositories = async () => {
-    if (!user?.phone_number) {
-      Alert.alert('Error', 'User information is missing. Please log in again.');
+  const loadRepositories = useCallback(async (showRefreshing = false) => {
+    const token = await getToken();
+
+    if (!token) {
+      Alert.alert('Error', 'Authentication token is missing. Please log in again.');
       return;
     }
 
-    setLoading(true);
+    if (showRefreshing) {
+      setRefreshingRepos(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
-      const repos = await repositoryApi.listRepositories({ phone_number: user.phone_number });
+      const repos = await repositoryApi.listRepositories(token);
       setRepositories(repos);
     } catch (error) {
-      console.error('Error loading repositories:', error);
-      Alert.alert('Error', 'Failed to load repositories. Please try again.');
+      if (error instanceof RepositoryError) {
+        Alert.alert('Error', error.message);
+      } else {
+        console.error('Error loading repositories:', error);
+        Alert.alert('Error', 'Failed to load repositories. Please try again.');
+      }
     } finally {
       setLoading(false);
+      setRefreshingRepos(false);
     }
-  };
+  }, [getToken]);
 
-  const handleCreateRepository = async () => {
-    if (!user?.phone_number) {
-      Alert.alert('Error', 'User information is missing. Please log in again.');
+  useEffect(() => {
+    fetchUser();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadRepositories();
+    }
+  }, [user, loadRepositories]);
+
+  const confirmCreateRepository = useCallback(async () => {
+    setRepoModalVisible(false);
+    const token = await getToken();
+    if (!token) {
+      Alert.alert('Error', 'Authentication token is missing. Please log in again.');
       return;
     }
-
-    const repoName = await new Promise<string>((resolve) => {
-      Alert.prompt(
-        'Create Repository',
-        'Enter repository name:',
-        [
-          { text: 'Cancel', onPress: () => resolve(''), style: 'cancel' },
-          { text: 'OK', onPress: (name) => resolve(name || '') },
-        ],
-        'plain-text'
-      );
-    });
-
-    if (repoName) {
-      setLoading(true);
-      try {
-        const newRepo = await repositoryApi.createRepository({ phone_number: user.phone_number, name: repoName });
-        setRepositories([...repositories, newRepo]);
-        Alert.alert('Success', `Repository "${repoName}" created successfully`);
-      } catch (error) {
+    if (!newRepoName.trim()) {
+      Alert.alert('Error', 'Repository name cannot be empty.');
+      return;
+    }
+    setCreatingRepo(true);
+    try {
+      const newRepo = await repositoryApi.createRepository({name: newRepoName}, token);
+      setRepositories((prevRepos) => [...prevRepos, newRepo]);
+      Alert.alert('Success', `Repository "${newRepoName}" created successfully`);
+      setNewRepoName('');
+    } catch (error) {
+      if (error instanceof RepositoryError) {
+        Alert.alert('Error', error.message);
+      } else {
         console.error('Error creating repository:', error);
-        Alert.alert('Error', `Failed to create repository: ${(error as Error).message}`);
-      } finally {
-        setLoading(false);
+        Alert.alert('Error', 'Failed to create repository. Please try again.');
       }
+    } finally {
+      setCreatingRepo(false);
     }
-  };
+  }, [newRepoName, getToken]);
 
-  const handleUpload = async (repository: Repository) => {
-    if (!user?.phone_number) {
-      Alert.alert('Error', 'User information is missing. Please log in again.');
+  const cancelCreateRepository = useCallback(() => {
+    setRepoModalVisible(false);
+    setNewRepoName('');
+  }, []);
+
+  const handleSelectRepository = useCallback(async (repository: Repository) => {
+    setRepoDetailsLoading(true);
+    const token = await getToken();
+    if (!token) {
+      Alert.alert('Error', 'Authentication token is missing. Please log in again.');
+      setRepoDetailsLoading(false);
       return;
     }
-
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: false,
-      });
-
-      if (!result.canceled) {
-        const file = result.assets[0];
-        await uploadFiles([file as unknown as File], user.phone_number);
-        Alert.alert('Success', `File ${file.name} uploaded successfully`);
-        if (selectedRepository && selectedRepository.id === repository.id) {
-          refreshFiles(user.phone_number);
-        }
+      const repoDetails = await repositoryApi.getRepositoryDetails(repository.id, token);
+      setSelectedRepository(repoDetails);
+    } catch (error) {
+      if (error instanceof RepositoryError) {
+        Alert.alert('Error', error.message);
+      } else {
+        console.error('Error fetching repository details:', error);
+        Alert.alert('Error', 'Failed to fetch repository details. Please try again.');
       }
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      Alert.alert('Error', `Failed to upload file: ${(error as Error).message}`);
+    } finally {
+      setRepoDetailsLoading(false);
     }
-  };
+  }, [getToken]);
 
-  const handleDeleteFile = async (filename: string) => {
-    if (!user?.phone_number) {
-      Alert.alert('Error', 'User information is missing. Please log in again.');
-      return;
-    }
-
-    try {
-      await deleteFile(filename, user.phone_number);
-      Alert.alert('Success', `File ${filename} deleted successfully`);
-      refreshFiles(user.phone_number);
-    } catch (error) {
-      console.error('Error deleting file:', error);
-      Alert.alert('Error', `Failed to delete file: ${(error as Error).message}`);
-    }
-  };
-
-  const renderRepositoryItem = ({ item }: { item: Repository }) => (
-    <TouchableOpacity 
-      style={styles.repositoryItem}
-      onPress={() => {
-        setSelectedRepository(item);
-        if (user?.phone_number) {
-          refreshFiles(user.phone_number);
-        }
-      }}
+  const renderRepositoryItem = useCallback(({ item }: { item: Repository }) => (
+    <TouchableOpacity
+      style={[
+        styles.repositoryItem,
+        selectedRepository?.id === item.id && styles.selectedRepository,
+      ]}
+      onPress={() => handleSelectRepository(item)}
+      accessibilityRole="button"
+      accessibilityLabel={`Select repository ${item.name}`}
     >
       <Text style={styles.repositoryName}>{item.name}</Text>
-      <TouchableOpacity 
-        style={styles.uploadButton} 
-        onPress={() => handleUpload(item)}
-        accessibilityLabel={`Upload file to ${item.name} repository`}
-      >
-        <Ionicons name="cloud-upload-sharp" size={24} color="#007AFF" />
-      </TouchableOpacity>
     </TouchableOpacity>
-  );
+  ), [selectedRepository, handleSelectRepository]);
 
-  const renderFileItem = ({ item }: { item: FileMetadata }) => (
-    <View style={styles.fileItem}>
-      <Text style={styles.fileName}>{item.filename}</Text>
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => handleDeleteFile(item.filename)}
-        accessibilityLabel={`Delete file ${item.filename}`}
-      >
-        <Ionicons name="trash-outline" size={24} color="#FF3B30" />
-      </TouchableOpacity>
-    </View>
-  );
+  if (userLoading) {
+    return (
+      <SafeAreaView style={styles.loader}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={repoModalVisible}
+        onRequestClose={() => setRepoModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Create Repository</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Enter repository name"
+              value={newRepoName}
+              onChangeText={setNewRepoName}
+              accessibilityLabel="Enter repository name"
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={cancelCreateRepository}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel creating repository"
+              >
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={confirmCreateRepository}
+                accessibilityRole="button"
+                accessibilityLabel="Confirm creating repository"
+              >
+                <Text style={styles.modalButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+            {creatingRepo && <ActivityIndicator size="small" color="#007AFF" />}
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.header}>
         <Text style={styles.title}>Repository Management</Text>
-        <TouchableOpacity 
-          style={styles.backButton} 
+        <TouchableOpacity
+          style={styles.backButton}
           onPress={() => router.back()}
+          accessibilityRole="button"
           accessibilityLabel="Go back"
         >
           <Ionicons name="arrow-back" size={24} color="#007AFF" />
         </TouchableOpacity>
       </View>
-      {loading || isUploading ? (
+      {loading ? (
         <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
       ) : (
-        <>
-          <FlatList
-            data={repositories}
-            renderItem={renderRepositoryItem}
-            keyExtractor={(item) => item.id.toString()}
-            style={styles.list}
-          />
-          {selectedRepository && (
-            <>
-              <Text style={styles.sectionTitle}>Files in {selectedRepository.name}</Text>
-              <FlatList
-                data={files}
-                renderItem={renderFileItem}
-                keyExtractor={(item) => item.id}
-                style={styles.fileList}
+        <View style={styles.content}>
+          <View style={styles.repositoryList}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Repositories</Text>
+              <TouchableOpacity
+                style={styles.refreshButton}
+                onPress={() => loadRepositories(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Refresh repositories"
+              >
+                <Ionicons name="refresh" size={24} color="#007AFF" />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={repositories}
+              renderItem={renderRepositoryItem}
+              keyExtractor={(item) => item.id.toString()}
+              style={styles.list}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshingRepos}
+                  onRefresh={() => loadRepositories(true)}
+                  accessibilityLabel="Pull to refresh repositories"
+                />
+              }
+            />
+            <TouchableOpacity
+              style={styles.createButton}
+              onPress={() => setRepoModalVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Create new repository"
+            >
+              <Text style={styles.createButtonText}>Create New Repository</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.fileManagement}>
+            {repoDetailsLoading ? (
+              <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
+            ) : selectedRepository && user ? (
+              <FileManagement
+                phoneNumber={user.phone_number}
+                repositoryName={selectedRepository.name}
+                repositoryId={selectedRepository.id}
               />
-            </>
-          )}
-        </>
-      )}
-      {uploadProgress && (
-        <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${uploadProgress.percentage}%` }]} />
-          <Text style={styles.progressText}>{`${uploadProgress.percentage}%`}</Text>
+            ) : (
+              <Text style={styles.noSelectionText}>Select a repository to manage files</Text>
+            )}
+          </View>
         </View>
       )}
-      <TouchableOpacity 
-        style={styles.createButton} 
-        onPress={handleCreateRepository}
-        accessibilityLabel="Create new repository"
-      >
-        <Text style={styles.createButtonText}>Create New Repository</Text>
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -224,6 +318,20 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 5,
   },
+  content: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  repositoryList: {
+    flex: 1,
+    borderRightWidth: 1,
+    borderRightColor: '#e0e0e0',
+  },
+  fileManagement: {
+    flex: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   list: {
     flex: 1,
   },
@@ -236,11 +344,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
+  selectedRepository: {
+    backgroundColor: '#e6f2ff',
+  },
   repositoryName: {
     fontSize: 18,
-  },
-  uploadButton: {
-    padding: 5,
   },
   createButton: {
     backgroundColor: '#007AFF',
@@ -259,44 +367,67 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    padding: 15,
-    backgroundColor: '#f8f8f8',
-  },
-  fileList: {
-    flex: 1,
-  },
-  fileItem: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    padding: 15,
+    backgroundColor: '#f8f8f8',
   },
-  fileName: {
-    fontSize: 16,
-  },
-  deleteButton: {
-    padding: 5,
-  },
-  progressBar: {
-    height: 20,
-    width: '100%',
-    backgroundColor: '#e0e0e0',
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#4CD964',
-  },
-  progressText: {
-    position: 'absolute',
-    right: 10,
-    color: '#fff',
+  sectionTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
   },
+  refreshButton: {
+    padding: 5,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: '80%',
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 10,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    marginBottom: 15,
+    fontWeight: 'bold',
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 5,
+    padding: 10,
+    marginBottom: 15,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  modalButton: {
+    marginLeft: 10,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    color: '#007AFF',
+  },
+  noSelectionText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
 });
+
+export default function RepositoryManagementScreenWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <RepositoryManagementScreen />
+    </ErrorBoundary>
+  );
+}

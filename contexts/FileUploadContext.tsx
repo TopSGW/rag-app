@@ -1,13 +1,14 @@
-import React, { createContext, useReducer, useContext, ReactNode, useCallback, useRef } from 'react';
-import FileService from '../services/fileService';
+import React, { createContext, useReducer, useContext, ReactNode, useCallback, useRef, useMemo } from 'react';
+import FileService, { FileServiceConfig } from '../services/fileService';
 import { getConfig } from '@/api/config';
 import { FileMetadata, FileList } from '../interfaces/files';
+import { RepositoryError } from '../interfaces/repository';
 
 interface FileUploadState {
   isLoading: boolean;
   error: string | null;
   files: FileMetadata[];
-  currentRepository: string | null;
+  currentRepository: number | null;
 }
 
 type FileUploadAction =
@@ -16,7 +17,7 @@ type FileUploadAction =
   | { type: 'SET_FILES'; payload: FileMetadata[] }
   | { type: 'ADD_FILE'; payload: FileMetadata }
   | { type: 'REMOVE_FILE'; payload: string }
-  | { type: 'SET_REPOSITORY'; payload: string };
+  | { type: 'SET_REPOSITORY'; payload: number };
 
 const initialState: FileUploadState = {
   isLoading: false,
@@ -41,22 +42,22 @@ const fileUploadReducer = (state: FileUploadState, action: FileUploadAction): Fi
         files: state.files.filter((file) => file.filename !== action.payload),
       };
     case 'SET_REPOSITORY':
-      // Only update if the repository actually changed
       if (state.currentRepository === action.payload) {
         return state;
       }
-      return { ...state, currentRepository: action.payload, files: [] }; // Clear files when repository changes
+      return { ...state, currentRepository: action.payload, files: [] };
     default:
       return state;
   }
 };
 
 interface FileUploadContextValue extends FileUploadState {
-  uploadFile: (file: File, phoneNumber: string) => Promise<void>;
+  uploadFile: (file: File, phoneNumber: string, signal: AbortSignal) => Promise<void>;
   deleteFile: (filename: string, phoneNumber: string) => Promise<void>;
   listFiles: (phoneNumber: string) => Promise<void>;
-  setRepository: (repository: string) => void;
+  setRepository: (repository: number) => void;
   clearError: () => void;
+  getCurrentRepository: () => number | null;
 }
 
 const FileUploadContext = createContext<FileUploadContextValue | undefined>(undefined);
@@ -67,10 +68,14 @@ interface FileUploadProviderProps {
 
 export const FileUploadProvider: React.FC<FileUploadProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(fileUploadReducer, initialState);
-  const fileService = new FileService();
+  const config = useMemo(() => getConfig(), []);
+  const fileServiceConfig: FileServiceConfig = useMemo(() => ({
+    baseUrl: config.baseUrl,
+  }), [config.baseUrl]);
+  const fileService = useMemo(() => new FileService(fileServiceConfig), [fileServiceConfig]);
   const operationInProgress = useRef(false);
 
-  const setRepository = useCallback((repository: string) => {
+  const setRepository = useCallback((repository: number) => {
     dispatch({ type: 'SET_REPOSITORY', payload: repository });
   }, []);
 
@@ -78,9 +83,13 @@ export const FileUploadProvider: React.FC<FileUploadProviderProps> = ({ children
     dispatch({ type: 'SET_ERROR', payload: null });
   }, []);
 
-  const uploadFile = useCallback(async (file: File, phoneNumber: string) => {
+  const getCurrentRepository = useCallback(() => {
+    return state.currentRepository;
+  }, [state.currentRepository]);
+
+  const uploadFile = useCallback(async (file: File, phoneNumber: string, signal: AbortSignal) => {
     if (!state.currentRepository) {
-      throw new Error('Please select a repository before uploading files');
+      throw new RepositoryError('Please select a repository before uploading files');
     }
 
     if (operationInProgress.current) return;
@@ -90,31 +99,35 @@ export const FileUploadProvider: React.FC<FileUploadProviderProps> = ({ children
       dispatch({ type: 'SET_LOADING', payload: true });
       dispatch({ type: 'SET_ERROR', payload: null });
 
-      await fileService.validateFileSize(file, getConfig().maxFileSize);
-      await fileService.validateFileType(file, getConfig().allowedFileTypes);
+      await fileService.validateFileSize(file, config.maxFileSize);
+      await fileService.validateFileType(file, config.allowedFileTypes);
 
       const response = await fileService.uploadFile({
         file,
         phone_number: phoneNumber,
         repository: state.currentRepository,
+        signal,
       });
 
       dispatch({ type: 'ADD_FILE', payload: response.file_metadata });
     } catch (error) {
-      dispatch({ 
-        type: 'SET_ERROR', 
-        payload: error instanceof Error ? error.message : 'An unknown error occurred' 
-      });
+      if (error instanceof RepositoryError) {
+        dispatch({ type: 'SET_ERROR', payload: error.message });
+      } else if (error instanceof Error) {
+        dispatch({ type: 'SET_ERROR', payload: `Failed to upload file: ${error.message}` });
+      } else {
+        dispatch({ type: 'SET_ERROR', payload: 'An unknown error occurred while uploading the file' });
+      }
       throw error;
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
       operationInProgress.current = false;
     }
-  }, [state.currentRepository, fileService]);
+  }, [state.currentRepository, fileService, config.maxFileSize, config.allowedFileTypes]);
 
   const deleteFile = useCallback(async (filename: string, phoneNumber: string) => {
     if (!state.currentRepository) {
-      throw new Error('Please select a repository before deleting files');
+      throw new RepositoryError('Please select a repository before deleting files');
     }
 
     if (operationInProgress.current) return;
@@ -132,10 +145,13 @@ export const FileUploadProvider: React.FC<FileUploadProviderProps> = ({ children
 
       dispatch({ type: 'REMOVE_FILE', payload: filename });
     } catch (error) {
-      dispatch({ 
-        type: 'SET_ERROR', 
-        payload: error instanceof Error ? error.message : 'An unknown error occurred' 
-      });
+      if (error instanceof RepositoryError) {
+        dispatch({ type: 'SET_ERROR', payload: error.message });
+      } else if (error instanceof Error) {
+        dispatch({ type: 'SET_ERROR', payload: `Failed to delete file: ${error.message}` });
+      } else {
+        dispatch({ type: 'SET_ERROR', payload: 'An unknown error occurred while deleting the file' });
+      }
       throw error;
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
@@ -145,7 +161,7 @@ export const FileUploadProvider: React.FC<FileUploadProviderProps> = ({ children
 
   const listFiles = useCallback(async (phoneNumber: string) => {
     if (!state.currentRepository) {
-      throw new Error('Please select a repository before listing files');
+      throw new RepositoryError('Please select a repository before listing files');
     }
 
     if (operationInProgress.current) return;
@@ -162,10 +178,13 @@ export const FileUploadProvider: React.FC<FileUploadProviderProps> = ({ children
 
       dispatch({ type: 'SET_FILES', payload: response.files });
     } catch (error) {
-      dispatch({ 
-        type: 'SET_ERROR', 
-        payload: error instanceof Error ? error.message : 'An unknown error occurred' 
-      });
+      if (error instanceof RepositoryError) {
+        dispatch({ type: 'SET_ERROR', payload: error.message });
+      } else if (error instanceof Error) {
+        dispatch({ type: 'SET_ERROR', payload: `Failed to list files: ${error.message}` });
+      } else {
+        dispatch({ type: 'SET_ERROR', payload: 'An unknown error occurred while listing files' });
+      }
       throw error;
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
@@ -180,6 +199,7 @@ export const FileUploadProvider: React.FC<FileUploadProviderProps> = ({ children
     listFiles,
     setRepository,
     clearError,
+    getCurrentRepository,
   };
 
   return (
