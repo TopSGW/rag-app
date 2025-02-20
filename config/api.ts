@@ -1,6 +1,6 @@
 // API configuration
-export const BACKEND_URL = 'https://3368-38-32-68-195.ngrok-free.app';
-export const WEBSOCKET_URL = 'wss://3368-38-32-68-195.ngrok-free.app';
+export const BACKEND_URL = 'http://10.0.2.2:8000';
+export const WEBSOCKET_URL = 'ws://10.0.2.2:8000';
 
 // Function to get the appropriate URL based on the protocol
 export const getApiUrl = (useWebSocket: boolean = false) => {

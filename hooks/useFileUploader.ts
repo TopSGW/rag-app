@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useFileUpload } from '../contexts/FileUploadContext';
 import { FileMetadata } from '../interfaces/files';
-import { getConfig } from '../api/config';
 import { RepositoryError } from '../interfaces/repository';
 
 interface UploadProgress {
@@ -19,9 +18,7 @@ interface UseFileUploaderReturn {
   deleteFile: (filename: string, phoneNumber: string) => Promise<void>;
   refreshFiles: (phoneNumber: string) => Promise<void>;
   clearError: () => void;
-  isFileValid: (file: File) => { valid: boolean; error?: string };
   setCurrentRepository: (repositoryId: number) => void;
-  cancelUpload: () => void;
 }
 
 export const useFileUploader = (): UseFileUploaderReturn => {
@@ -29,80 +26,43 @@ export const useFileUploader = (): UseFileUploaderReturn => {
     files,
     isLoading,
     error,
-    uploadFile,
+    uploadFiles: contextUploadFiles,
     deleteFile: contextDeleteFile,
     listFiles,
     clearError,
-    currentRepository,
+    getCurrentRepository,
     setCurrentRepository: contextSetCurrentRepository
   } = useFileUpload();
 
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const isMounted = useRef(true);
-  const cancelTokenSource = useRef<AbortController | null>(null);
 
   // Cleanup on unmount
   const cleanup = () => {
     isMounted.current = false;
-    if (cancelTokenSource.current) {
-      cancelTokenSource.current.abort();
-    }
   };
-
-  const isFileValid = useCallback((file: File) => {
-    const config = getConfig();
-
-    if (file.size > config.maxFileSize) {
-      return {
-        valid: false,
-        error: `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds maximum allowed size of ${(
-          config.maxFileSize / 1024 / 1024
-        ).toFixed(2)}MB`
-      };
-    }
-
-    if (!config.allowedFileTypes.includes(file.type)) {
-      return {
-        valid: false,
-        error: `File type ${file.type} is not allowed. Allowed types: ${config.allowedFileTypes.join(
-          ', '
-        )}`
-      };
-    }
-
-    return { valid: true };
-  }, []);
 
   const uploadFiles = useCallback(
     async (files: File[], phoneNumber: string) => {
+      const currentRepository = getCurrentRepository();
       if (!currentRepository) {
         throw new RepositoryError('Please select a repository before uploading files');
       }
 
       const totalSize = files.reduce((acc, file) => acc + file.size, 0);
-      let uploadedSize = 0;
-
-      cancelTokenSource.current = new AbortController();
 
       try {
-        for (const file of files) {
-          if (!isMounted.current) return;
+        setUploadProgress({ loaded: 0, total: totalSize, percentage: 0 });
 
-          const validation = isFileValid(file);
-          if (!validation.valid) {
-            throw new RepositoryError(validation.error || 'Invalid file');
-          }
-
-          await uploadFile(file, phoneNumber, cancelTokenSource.current.signal);
-          
-          if (isMounted.current) {
-            uploadedSize += file.size;
-            setUploadProgress({
-              loaded: uploadedSize,
-              total: totalSize,
-              percentage: Math.round((uploadedSize / totalSize) * 100)
-            });
-          }
+        const abortController = new AbortController();
+        await contextUploadFiles(files, phoneNumber, abortController.signal);
+        
+        if (isMounted.current) {
+          setUploadProgress({
+            loaded: totalSize,
+            total: totalSize,
+            percentage: 100
+          });
         }
       } catch (error) {
         if (error instanceof RepositoryError) {
@@ -116,17 +76,13 @@ export const useFileUploader = (): UseFileUploaderReturn => {
         if (isMounted.current) {
           setUploadProgress(null);
         }
-        cancelTokenSource.current = null;
       }
     },
-    [uploadFile, isFileValid, currentRepository]
+    [contextUploadFiles, getCurrentRepository]
   );
 
   const deleteFile = useCallback(
     async (filename: string, phoneNumber: string) => {
-      if (!currentRepository) {
-        throw new RepositoryError('Please select a repository before deleting files');
-      }
       try {
         await contextDeleteFile(filename, phoneNumber);
       } catch (error) {
@@ -137,14 +93,11 @@ export const useFileUploader = (): UseFileUploaderReturn => {
         }
       }
     },
-    [contextDeleteFile, currentRepository]
+    [contextDeleteFile]
   );
 
   const refreshFiles = useCallback(
     async (phoneNumber: string) => {
-      if (!currentRepository) {
-        throw new RepositoryError('Please select a repository before listing files');
-      }
       try {
         await listFiles(phoneNumber);
       } catch (error) {
@@ -155,20 +108,12 @@ export const useFileUploader = (): UseFileUploaderReturn => {
         }
       }
     },
-    [listFiles, currentRepository]
+    [listFiles]
   );
 
   const setCurrentRepository = useCallback((repositoryId: number) => {
     contextSetCurrentRepository(repositoryId);
   }, [contextSetCurrentRepository]);
-
-  const cancelUpload = useCallback(() => {
-    if (cancelTokenSource.current) {
-      cancelTokenSource.current.abort();
-      cancelTokenSource.current = null;
-      setUploadProgress(null);
-    }
-  }, []);
 
   return {
     files,
@@ -179,8 +124,6 @@ export const useFileUploader = (): UseFileUploaderReturn => {
     deleteFile,
     refreshFiles,
     clearError,
-    isFileValid,
-    setCurrentRepository,
-    cancelUpload
+    setCurrentRepository
   };
 };

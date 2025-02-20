@@ -1,17 +1,18 @@
 import React, { useCallback, useRef, useEffect } from 'react';
 import { View, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { useFileUploader } from '../hooks/useFileUploader';
-import { useFileUpload } from '../contexts/FileUploadContext';
-import { ThemedText } from './ThemedText';
-import { ThemedView } from './ThemedView';
+import { useFileUploader } from '../../hooks/useFileUploader';
+import { useFileUpload } from '../../contexts/FileUploadContext';
+import { ThemedText } from '../common/ThemedText';
+import { ThemedView } from '../common/ThemedView';
+import { RepositoryError } from '../../interfaces/repository';
 
 interface FileUploadProps {
   phoneNumber: string;
-  repository: string | null;
+  repository_id: number | null;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ phoneNumber, repository }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ phoneNumber, repository_id }) => {
   const {
     files,
     isUploading,
@@ -21,23 +22,23 @@ const FileUpload: React.FC<FileUploadProps> = ({ phoneNumber, repository }) => {
     deleteFile,
     refreshFiles,
     clearError,
+    setCurrentRepository,
   } = useFileUploader();
 
-  const { setRepository } = useFileUpload();
   const initialLoadDone = useRef(false);
-  const currentRepositoryRef = useRef<string | null>(null);
+  const currentRepositoryRef = useRef<number | null>(null);
   const isRefreshing = useRef(false);
 
   // Handle repository changes
   useEffect(() => {
     const handleRepositoryChange = async () => {
-      if (!repository || repository === currentRepositoryRef.current) {
+      if (!repository_id || repository_id === currentRepositoryRef.current) {
         return;
       }
 
       try {
-        currentRepositoryRef.current = repository;
-        setRepository(repository);
+        currentRepositoryRef.current = repository_id;
+        setCurrentRepository(repository_id);
 
         // Only refresh files on initial load or when repository actually changes
         if (!initialLoadDone.current && !isRefreshing.current) {
@@ -54,10 +55,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ phoneNumber, repository }) => {
     };
 
     handleRepositoryChange();
-  }, [repository, phoneNumber, setRepository]);
+  }, [repository_id, phoneNumber, setCurrentRepository, refreshFiles]);
 
   const pickDocument = useCallback(async () => {
-    if (!repository) {
+    if (!repository_id) {
       Alert.alert('Error', 'Please select a repository before uploading files');
       return;
     }
@@ -96,14 +97,18 @@ const FileUpload: React.FC<FileUploadProps> = ({ phoneNumber, repository }) => {
         isRefreshing.current = false;
       }
     } catch (err) {
-      if (err instanceof Error) {
+      if (err instanceof RepositoryError) {
         Alert.alert('Error', err.message);
+      } else if (err instanceof Error) {
+        Alert.alert('Error', `Failed to upload files: ${err.message}`);
+      } else {
+        Alert.alert('Error', 'An unknown error occurred while uploading files');
       }
     }
-  }, [repository, uploadFiles, phoneNumber, refreshFiles]);
+  }, [repository_id, uploadFiles, phoneNumber, refreshFiles]);
 
   const handleDelete = useCallback(async (filename: string) => {
-    if (!repository) {
+    if (!repository_id) {
       Alert.alert('Error', 'Please select a repository before deleting files');
       return;
     }
@@ -118,13 +123,17 @@ const FileUpload: React.FC<FileUploadProps> = ({ phoneNumber, repository }) => {
         isRefreshing.current = false;
       }
     } catch (err) {
-      if (err instanceof Error) {
+      if (err instanceof RepositoryError) {
         Alert.alert('Error', err.message);
+      } else if (err instanceof Error) {
+        Alert.alert('Error', `Failed to delete file: ${err.message}`);
+      } else {
+        Alert.alert('Error', 'An unknown error occurred while deleting the file');
       }
     }
-  }, [repository, deleteFile, phoneNumber, refreshFiles]);
+  }, [repository_id, deleteFile, phoneNumber, refreshFiles]);
 
-  if (!repository) {
+  if (!repository_id) {
     return (
       <ThemedView style={styles.container}>
         <View style={styles.messageContainer}>

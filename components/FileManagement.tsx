@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { FileMetadata } from '../interfaces/files';
-import fileApi from '../api/fileApi';
+import { FileMetadata, RNFile, UploadConfig } from '../interfaces/files';
+import FileAPI from '../api/fileApi';
+import { AxiosProgressEvent } from 'axios';
 
 interface FileManagementProps {
   phoneNumber: string;
@@ -23,13 +24,15 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
   const [files, setFiles] = useState<FileMetadata[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const cancelTokenSource = useRef<ReturnType<typeof FileAPI.getCancelTokenSource> | null>(null);
 
   const loadFiles = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const fileList = await fileApi.listFiles(phoneNumber, repositoryName);
+      const fileList = await FileAPI.listFiles(repositoryId);
       setFiles(fileList.files);
     } catch (error) {
       setError('Failed to load files. Please try again.');
@@ -37,7 +40,7 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
     } finally {
       setIsLoading(false);
     }
-  }, [phoneNumber, repositoryName]);
+  }, [repositoryId]);
 
   useEffect(() => {
     loadFiles();
@@ -48,23 +51,54 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
         copyToCacheDirectory: false,
+        multiple: true,
       });
 
-      if (!result.canceled) {
-        const file = result.assets[0];
+      if (!result.canceled && result.assets.length > 0) {
         setIsUploading(true);
         setError(null);
-        await fileApi.uploadFile(phoneNumber, repositoryName, file as unknown as File);
-        Alert.alert('Success', `File ${file.name} uploaded successfully`);
+        setUploadProgress(0);
+
+        cancelTokenSource.current = FileAPI.getCancelTokenSource();
+
+        const rnFiles: RNFile[] = result.assets.map(asset => ({
+          uri: asset.uri,
+          name: asset.name,
+          type: asset.mimeType || 'application/octet-stream'
+        }));
+
+        const uploadConfig: UploadConfig = {
+          onUploadProgress: (progressEvent: AxiosProgressEvent) => {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+            setUploadProgress(percentCompleted);
+          },
+          cancelToken: cancelTokenSource.current.token
+        };
+
+        await FileAPI.uploadFiles(repositoryId, rnFiles, uploadConfig);
+
+        Alert.alert('Success', `${result.assets.length} file(s) uploaded successfully`);
         loadFiles();
       }
-    } catch (error) {
-      setError('Failed to upload file. Please try again.');
-      console.error('Error uploading file:', error);
+    } catch (error: any) {
+      if (error.message === 'canceled') {
+        setError('Upload canceled');
+      } else {
+        setError('Failed to upload files. Please try again.');
+        console.error('Error uploading files:', error);
+      }
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
+      cancelTokenSource.current = null;
     }
-  }, [phoneNumber, repositoryName, loadFiles]);
+  }, [repositoryId, loadFiles]);
+
+  const handleCancelUpload = useCallback(() => {
+    if (cancelTokenSource.current) {
+      cancelTokenSource.current.cancel('Upload canceled by user');
+    }
+  }, []);
 
   const handleDeleteFile = useCallback(async (filename: string) => {
     Alert.alert(
@@ -82,7 +116,7 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
             setIsLoading(true);
             setError(null);
             try {
-              await fileApi.deleteFile(phoneNumber, repositoryName, filename);
+              await FileAPI.deleteFile(repositoryId, filename);
               Alert.alert('Success', `File ${filename} deleted successfully`);
               loadFiles();
             } catch (error) {
@@ -96,7 +130,7 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
       ],
       { cancelable: true }
     );
-  }, [phoneNumber, repositoryName, loadFiles]);
+  }, [repositoryId, loadFiles]);
 
   const renderFileItem = useCallback(({ item }: { item: FileMetadata }) => (
     <View style={styles.fileItem}>
@@ -118,7 +152,17 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
       {isUploading && (
         <View style={styles.uploadProgress}>
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text style={styles.uploadProgressText}>Uploading...</Text>
+          <Text style={styles.uploadProgressText}>
+            Uploading... {uploadProgress.toFixed(0)}%
+          </Text>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={handleCancelUpload}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel upload"
+          >
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       )}
       {isLoading ? (
@@ -138,11 +182,12 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
       <TouchableOpacity
         style={styles.uploadButton}
         onPress={handleUpload}
+        disabled={isUploading}
         accessibilityRole="button"
-        accessibilityLabel="Upload file"
+        accessibilityLabel="Upload files"
       >
         <Ionicons name="cloud-upload-outline" size={24} color="#FFFFFF" />
-        <Text style={styles.uploadButtonText}>Upload File</Text>
+        <Text style={styles.uploadButtonText}>Upload Files</Text>
       </TouchableOpacity>
       {error && (
         <View style={styles.errorContainer}>
@@ -210,6 +255,14 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 14,
     color: '#007AFF',
+  },
+  cancelButton: {
+    marginLeft: 'auto',
+    padding: 8,
+  },
+  cancelButtonText: {
+    color: '#FF3B30',
+    fontWeight: 'bold',
   },
   errorContainer: {
     backgroundColor: '#FFEBEE',
