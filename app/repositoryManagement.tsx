@@ -10,6 +10,8 @@ import {
   Modal,
   TextInput,
   RefreshControl,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +25,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import FileManagement from '@/components/FileManagement';
 
 const repositoryApi = new RepositoryAPI();
+const { width } = Dimensions.get('window');
 
 function RepositoryManagementScreen() {
   const { getToken } = useAuth();
@@ -35,7 +38,7 @@ function RepositoryManagementScreen() {
   const [newRepoName, setNewRepoName] = useState('');
   const [refreshingRepos, setRefreshingRepos] = useState(false);
   const [creatingRepo, setCreatingRepo] = useState(false);
-  const [repoDetailsLoading, setRepoDetailsLoading] = useState(false);
+  const [fadeAnim] = useState(new Animated.Value(0));
 
   const fetchUser = async () => {
     const token = await getToken();
@@ -48,7 +51,6 @@ function RepositoryManagementScreen() {
       const response = await axios.get(`${BACKEND_URL}/get_user`, {
         params: { token }
       });
-      console.log(response.data);
       setUser(response.data);
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -86,6 +88,11 @@ function RepositoryManagementScreen() {
     try {
       const repos = await repositoryApi.listRepositories(token);
       setRepositories(repos);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
     } catch (error) {
       if (error instanceof RepositoryError) {
         Alert.alert('Error', error.message);
@@ -97,7 +104,7 @@ function RepositoryManagementScreen() {
       setLoading(false);
       setRefreshingRepos(false);
     }
-  }, [getToken]);
+  }, [getToken, fadeAnim]);
 
   useEffect(() => {
     fetchUser();
@@ -143,47 +150,30 @@ function RepositoryManagementScreen() {
     setNewRepoName('');
   }, []);
 
-  const handleSelectRepository = useCallback(async (repository: Repository) => {
-    setRepoDetailsLoading(true);
-    const token = await getToken();
-    if (!token) {
-      Alert.alert('Error', 'Authentication token is missing. Please log in again.');
-      setRepoDetailsLoading(false);
-      return;
-    }
-    try {
-      const repoDetails = await repositoryApi.getRepositoryDetails(repository.id, token);
-      setSelectedRepository(repoDetails);
-    } catch (error) {
-      if (error instanceof RepositoryError) {
-        Alert.alert('Error', error.message);
-      } else {
-        console.error('Error fetching repository details:', error);
-        Alert.alert('Error', 'Failed to fetch repository details. Please try again.');
-      }
-    } finally {
-      setRepoDetailsLoading(false);
-    }
-  }, [getToken]);
+  const handleSelectRepository = useCallback((repository: Repository) => {
+    setSelectedRepository(repository);
+  }, []);
+
+  const handleBackFromFileManagement = useCallback(() => {
+    setSelectedRepository(null);
+  }, []);
 
   const renderRepositoryItem = useCallback(({ item }: { item: Repository }) => (
     <TouchableOpacity
-      style={[
-        styles.repositoryItem,
-        selectedRepository?.id === item.id && styles.selectedRepository,
-      ]}
+      style={styles.repositoryItem}
       onPress={() => handleSelectRepository(item)}
       accessibilityRole="button"
       accessibilityLabel={`Select repository ${item.name}`}
     >
+      <Ionicons name="folder-outline" size={24} color="#4A90E2" style={styles.folderIcon} />
       <Text style={styles.repositoryName}>{item.name}</Text>
     </TouchableOpacity>
-  ), [selectedRepository, handleSelectRepository]);
+  ), [handleSelectRepository]);
 
   if (userLoading) {
     return (
       <SafeAreaView style={styles.loader}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color="#4A90E2" />
       </SafeAreaView>
     );
   }
@@ -208,7 +198,7 @@ function RepositoryManagementScreen() {
             />
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={styles.modalButton}
+                style={[styles.modalButton, styles.cancelButton]}
                 onPress={cancelCreateRepository}
                 accessibilityRole="button"
                 accessibilityLabel="Cancel creating repository"
@@ -216,32 +206,39 @@ function RepositoryManagementScreen() {
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.modalButton}
+                style={[styles.modalButton, styles.confirmButton]}
                 onPress={confirmCreateRepository}
                 accessibilityRole="button"
                 accessibilityLabel="Confirm creating repository"
               >
-                <Text style={styles.modalButtonText}>OK</Text>
+                <Text style={[styles.modalButtonText, styles.confirmButtonText]}>Create</Text>
               </TouchableOpacity>
             </View>
-            {creatingRepo && <ActivityIndicator size="small" color="#007AFF" />}
+            {creatingRepo && <ActivityIndicator size="small" color="#4A90E2" />}
           </View>
         </View>
       </Modal>
 
       <View style={styles.header}>
-        <Text style={styles.title}>Repository Management</Text>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel="Go back"
         >
-          <Ionicons name="arrow-back" size={24} color="#007AFF" />
+          <Ionicons name="arrow-back" size={24} color="#4A90E2" />
         </TouchableOpacity>
+        <Text style={styles.title}>Repository Management</Text>
       </View>
       {loading ? (
-        <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
+        <ActivityIndicator size="large" color="#4A90E2" style={styles.loader} />
+      ) : selectedRepository ? (
+        <FileManagement
+          phoneNumber={user?.phone_number || ''}
+          repositoryName={selectedRepository.name}
+          repositoryId={selectedRepository.id}
+          onBack={handleBackFromFileManagement}
+        />
       ) : (
         <View style={styles.content}>
           <View style={styles.repositoryList}>
@@ -253,44 +250,35 @@ function RepositoryManagementScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Refresh repositories"
               >
-                <Ionicons name="refresh" size={24} color="#007AFF" />
+                <Ionicons name="refresh" size={24} color="#4A90E2" />
               </TouchableOpacity>
             </View>
-            <FlatList
-              data={repositories}
-              renderItem={renderRepositoryItem}
-              keyExtractor={(item) => item.id.toString()}
-              style={styles.list}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshingRepos}
-                  onRefresh={() => loadRepositories(true)}
-                  accessibilityLabel="Pull to refresh repositories"
-                />
-              }
-            />
-            <TouchableOpacity
-              style={styles.createButton}
-              onPress={() => setRepoModalVisible(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Create new repository"
-            >
-              <Text style={styles.createButtonText}>Create New Repository</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.fileManagement}>
-            {repoDetailsLoading ? (
-              <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
-            ) : selectedRepository && user ? (
-              <FileManagement
-                phoneNumber={user.phone_number}
-                repositoryName={selectedRepository.name}
-                repositoryId={selectedRepository.id}
+            <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
+              <FlatList
+                data={repositories}
+                renderItem={renderRepositoryItem}
+                keyExtractor={(item) => item.id.toString()}
+                style={styles.list}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshingRepos}
+                    onRefresh={() => loadRepositories(true)}
+                    accessibilityLabel="Pull to refresh repositories"
+                    colors={['#4A90E2']}
+                  />
+                }
               />
-            ) : (
-              <Text style={styles.noSelectionText}>Select a repository to manage files</Text>
-            )}
+            </Animated.View>
           </View>
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => setRepoModalVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Create new repository"
+          >
+            <Ionicons name="add" size={24} color="#FFFFFF" style={styles.createButtonIcon} />
+            <Text style={styles.createButtonText}>Create New Repository</Text>
+          </TouchableOpacity>
         </View>
       )}
     </SafeAreaView>
@@ -300,66 +288,66 @@ function RepositoryManagementScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#F5F7FA',
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 10,
-    backgroundColor: '#fff',
+    paddingVertical: 15,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E9F0',
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
+    color: '#2E3A59',
+    marginLeft: 15,
   },
   backButton: {
     padding: 5,
   },
   content: {
     flex: 1,
-    flexDirection: 'row',
   },
   repositoryList: {
     flex: 1,
-    borderRightWidth: 1,
-    borderRightColor: '#e0e0e0',
-  },
-  fileManagement: {
-    flex: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
   list: {
     flex: 1,
   },
   repositoryItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     padding: 15,
-    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#E5E9F0',
   },
-  selectedRepository: {
-    backgroundColor: '#e6f2ff',
+  folderIcon: {
+    marginRight: 10,
   },
   repositoryName: {
-    fontSize: 18,
+    fontSize: 16,
+    color: '#2E3A59',
   },
   createButton: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    margin: 20,
-    borderRadius: 10,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4A90E2',
+    padding: 15,
+    marginHorizontal: 20,
+    marginVertical: 10,
+    borderRadius: 10,
+  },
+  createButtonIcon: {
+    marginRight: 10,
   },
   createButtonText: {
-    color: '#fff',
-    fontSize: 18,
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: 'bold',
   },
   loader: {
@@ -372,11 +360,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 15,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#F5F7FA',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E9F0',
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
+    color: '#2E3A59',
   },
   refreshButton: {
     padding: 5,
@@ -388,8 +379,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContainer: {
-    width: '80%',
-    backgroundColor: '#fff',
+    width: width * 0.8,
+    backgroundColor: '#FFFFFF',
     padding: 20,
     borderRadius: 10,
     elevation: 5,
@@ -398,29 +389,41 @@ const styles = StyleSheet.create({
     fontSize: 20,
     marginBottom: 15,
     fontWeight: 'bold',
+    color: '#2E3A59',
+    textAlign: 'center',
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#E5E9F0',
     borderRadius: 5,
     padding: 10,
     marginBottom: 15,
+    fontSize: 16,
   },
   modalButtons: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
   },
   modalButton: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 5,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#F5F7FA',
+    marginRight: 10,
+  },
+  confirmButton: {
+    backgroundColor: '#4A90E2',
     marginLeft: 10,
   },
   modalButtonText: {
     fontSize: 16,
-    color: '#007AFF',
+    fontWeight: 'bold',
   },
-  noSelectionText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
+  confirmButtonText: {
+    color: '#FFFFFF',
   },
 });
 

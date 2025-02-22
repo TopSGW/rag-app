@@ -18,9 +18,10 @@ interface FileManagementProps {
   phoneNumber: string;
   repositoryName: string;
   repositoryId: number;
+  onBack: () => void;
 }
 
-const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repositoryName, repositoryId }) => {
+const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repositoryName, repositoryId, onBack }) => {
   const [files, setFiles] = useState<FileMetadata[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -148,7 +149,12 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Files in {repositoryName}</Text>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#007AFF" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Files in {repositoryName}</Text>
+      </View>
       {isUploading && (
         <View style={styles.uploadProgress}>
           <ActivityIndicator size="small" color="#007AFF" />
@@ -204,23 +210,36 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F5F7FA',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
+  },
+  backButton: {
+    marginRight: 16,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 16,
+    color: '#2E3A59',
   },
   fileItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
   },
   fileName: {
     fontSize: 16,
+    color: '#2E3A59',
   },
   deleteButton: {
     padding: 8,
@@ -230,9 +249,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#007AFF',
-    padding: 12,
+    padding: 16,
     borderRadius: 8,
-    marginTop: 16,
+    margin: 16,
   },
   uploadButtonText: {
     color: '#FFFFFF',
@@ -244,12 +263,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 24,
     fontSize: 16,
-    color: '#666',
+    color: '#8F9BB3',
   },
   uploadProgress: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    padding: 16,
+    backgroundColor: '#E5F2FF',
   },
   uploadProgressText: {
     marginLeft: 8,
@@ -266,9 +286,9 @@ const styles = StyleSheet.create({
   },
   errorContainer: {
     backgroundColor: '#FFEBEE',
-    padding: 12,
+    padding: 16,
+    margin: 16,
     borderRadius: 8,
-    marginTop: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
