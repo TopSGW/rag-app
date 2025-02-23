@@ -1,6 +1,6 @@
 // API configuration
-export const BACKEND_URL = 'http://213.192.2.103:40114';
-export const WEBSOCKET_URL = 'ws://213.192.2.103:40114';
+export const BACKEND_URL = 'http://213.192.2.103:40143';
+export const WEBSOCKET_URL = 'ws://213.192.2.103:40143';
 
 // Function to get the appropriate URL based on the protocol
 export const getApiUrl = (useWebSocket: boolean = false) => {

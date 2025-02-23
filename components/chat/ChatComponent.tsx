@@ -97,6 +97,7 @@ const ChatComponent: React.FC = () => {
 
     authWs.onclose = (event) => {
       console.log("Auth WebSocket closed with code:", event.code);
+      Alert.prompt("Server connection failed!")
       // Optionally add reconnection logic for auth WebSocket if needed.
     };
 
