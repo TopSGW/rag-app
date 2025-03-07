@@ -45,6 +45,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const handleTokenExpiration = useCallback(async () => {
+    console.log('Token expired, clearing token and redirecting to biometric screen');
     await clearToken();
     Alert.alert(
       "Session Expired",
@@ -53,108 +54,119 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     );
   }, [clearToken]);
 
+  const initializeChatWebSocket = useCallback((token: string) => {
+    console.log('Initializing chat WebSocket');
+    if (wsChat) {
+      console.log('Closing existing chat WebSocket');
+      wsChat.close();
+    }
+    setToken(token);
+    const websocketUrl = getApiUrl(true);
+    console.log('Chat WebSocket URL:', `${websocketUrl}/ws/chat?token=${token}`);
+    const chatWs = new WebSocket(`${websocketUrl}/ws/chat?token=${token}`);
+
+    chatWs.onopen = () => {
+      console.log('Chat WebSocket connected successfully');
+      setConnectionStatus('connected');
+      setConnectionError(null);
+      retryCount.current = 0;
+    };
+
+    chatWs.onmessage = (event) => {
+      console.log('Received message on chat WebSocket:', event.data);
+      try {
+        const data = JSON.parse(event.data);
+        if (data.message) {
+          setLastMessage(data.message);
+        }
+      } catch (error) {
+        console.error('Error handling chat WebSocket message:', error);
+      }
+    };
+
+    chatWs.onerror = (error) => {
+      console.error('Chat WebSocket error:', error);
+      setConnectionStatus('error');
+      setConnectionError("Failed to connect to chat. Please try again later.");
+    };
+
+    chatWs.onclose = (event) => {
+      console.log('Chat WebSocket closed:', event.code);
+      setConnectionStatus('disconnected');
+      if (event.code === 1008) {
+        handleTokenExpiration();
+      } else {
+        setConnectionError("Chat connection closed. Attempting to reconnect...");
+        retryWebSocketConnection();
+      }
+    };
+
+    setWsChat(chatWs);
+  }, [getToken, handleTokenExpiration, setConnectionStatus, setToken]);
+
   const handleWebSocketMessage = useCallback(async (event: MessageEvent) => {
+    console.log('Received message on auth WebSocket:', event.data);
     try {
       const data = JSON.parse(event.data);
       
       if (data.token) {
+        console.log('Received new token from auth WebSocket, updating chat WebSocket');
         await setToken(data.token);
-        initializeChatWebSocket(data.token);
+        if (wsChat && wsChat.readyState === WebSocket.OPEN) {
+          wsChat.send(JSON.stringify({ update_token: data.token }));
+        } else {
+          initializeChatWebSocket(data.token);
+        }
       }
 
       if (data.message) {
-        try {
-          const parsedMessage = JSON.parse(data.message);
-          if (parsedMessage.instruction) {
-            setLastMessage(parsedMessage.instruction);
-          } else {
-            setLastMessage(data.message);
-          }
-        } catch (error) {
-          setLastMessage(data.message);
-        }
+        setLastMessage(data.message);
       }
 
       if (data.error === "Token has expired or is invalid") {
         handleTokenExpiration();
       }
     } catch (error) {
-      // Silently handle parsing errors
+      console.error('Error handling WebSocket message:', error);
     }
-  }, [setToken, handleTokenExpiration]);
-
-  const debounceSetConnectionStatus = useCallback((status: 'connected' | 'disconnected' | 'connecting' | 'error') => {
-    setTimeout(() => {
-      setConnectionStatus(status);
-    }, 300);
-  }, []);
-
-  const initializeChatWebSocket = useCallback((token: string) => {
-    if (wsChat) {
-      wsChat.close();
-    }
-
-    const websocketUrl = getApiUrl(true);
-    debounceSetConnectionStatus('connecting');
-    setConnectionError(null);
-    const chatWs = new WebSocket(`${websocketUrl}/ws/chat?token=${token}`);
-
-    chatWs.onopen = () => {
-      debounceSetConnectionStatus('connected');
-      setConnectionError(null);
-      retryCount.current = 0;
-    };
-
-    chatWs.onmessage = handleWebSocketMessage;
-
-    chatWs.onerror = () => {
-      debounceSetConnectionStatus('error');
-      setConnectionError("Failed to connect to chat. Please try again later.");
-    };
-
-    chatWs.onclose = (event) => {
-      debounceSetConnectionStatus('disconnected');
-      if (event.code === 1008) {
-        handleTokenExpiration();
-      } else {
-        setConnectionError("Connection closed. Attempting to reconnect...");
-        retryWebSocketConnection();
-      }
-    };
-
-    setWsChat(chatWs);
-    setWsAuth(null); // Close auth WebSocket when chat is initialized
-  }, [getToken, handleTokenExpiration, handleWebSocketMessage, debounceSetConnectionStatus]);
+  }, [setToken, handleTokenExpiration, initializeChatWebSocket]);
 
   const initializeAuthWebSocket = useCallback(() => {
-
+    console.log('Initializing auth WebSocket');
+    if (wsAuth) {
+      console.log('Closing existing auth WebSocket');
+      wsAuth.close();
+    }
     const websocketUrl = getApiUrl(true);
-    debounceSetConnectionStatus('connecting');
+    console.log('Auth WebSocket URL:', `${websocketUrl}/ws/auth-dialogue`);
+    setConnectionStatus('connecting');
     setConnectionError(null);
     const authWs = new WebSocket(`${websocketUrl}/ws/auth-dialogue`);
     
     authWs.onopen = () => {
-      debounceSetConnectionStatus('connected');
+      console.log('Auth WebSocket connected successfully');
+      setConnectionStatus('connected');
       setConnectionError(null);
       retryCount.current = 0;
     };
 
     authWs.onmessage = handleWebSocketMessage;
 
-    authWs.onerror = () => {
-      debounceSetConnectionStatus('error');
+    authWs.onerror = (error) => {
+      console.error('Auth WebSocket error:', error);
+      setConnectionStatus('error');
       setConnectionError("Failed to establish authentication connection. Please check your internet connection and try again.");
     };
 
-    authWs.onclose = () => {
-      debounceSetConnectionStatus('disconnected');
+    authWs.onclose = (event) => {
+      console.log('Auth WebSocket closed:', event.code);
+      setConnectionStatus('disconnected');
       setConnectionError("Authentication connection closed. Attempting to reconnect...");
       retryWebSocketConnection();
     };
 
     setWsAuth(authWs);
-    setWsChat(null); // Close chat WebSocket when auth is initialized
-  }, [handleWebSocketMessage, debounceSetConnectionStatus]);
+  }, [handleWebSocketMessage, setConnectionStatus]);
 
   const retryWebSocketConnection = useCallback(() => {
     const retryDelay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, retryCount.current), MAX_RETRY_DELAY);
@@ -164,44 +176,54 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       clearTimeout(retryTimeoutRef.current);
     }
 
+    console.log(`Retrying WebSocket connection in ${retryDelay}ms`);
     retryTimeoutRef.current = setTimeout(async () => {
-      const token = await getToken();
-      if (token && isAuthenticated) {
-        initializeChatWebSocket(token);
-      } else {
-        initializeAuthWebSocket();
-      }
+      await initializeWebSockets();
     }, retryDelay);
-  }, [getToken, isAuthenticated, initializeChatWebSocket, initializeAuthWebSocket]);
+  }, []);
 
   const initializeWebSockets = useCallback(async () => {
+    console.log('Initializing WebSockets, isAuthenticated:', isAuthenticated);
     const token = await getToken();
     if (token && isAuthenticated) {
+      console.log('Token available and authenticated, initializing chat WebSocket');
       initializeChatWebSocket(token);
     } else {
+      console.log('No token or not authenticated, initializing auth WebSocket');
       initializeAuthWebSocket();
     }
   }, [getToken, isAuthenticated, initializeChatWebSocket, initializeAuthWebSocket]);
 
   useEffect(() => {
+    console.log('WebSocketProvider useEffect, isAuthenticated:', isAuthenticated);
     initializeWebSockets();
     return () => {
-      wsAuth?.close();
-      wsChat?.close();
+      if (wsAuth) {
+        console.log('Closing auth WebSocket');
+        wsAuth.close();
+      }
+      if (wsChat) {
+        console.log('Closing chat WebSocket');
+        wsChat.close();
+      }
       if (retryTimeoutRef.current) {
+        console.log('Clearing retry timeout');
         clearTimeout(retryTimeoutRef.current);
       }
     };
-  }, [initializeWebSockets]);
+  }, [initializeWebSockets, isAuthenticated]);
 
   const sendChatMessage = useCallback((message: string) => {
     const activeWebSocket = wsChat || wsAuth;
     if (activeWebSocket && activeWebSocket.readyState === WebSocket.OPEN) {
+      console.log('Sending message through', wsChat ? 'chat' : 'auth', 'WebSocket');
       activeWebSocket.send(JSON.stringify({ user_input: message }));
     } else {
+      console.error('Unable to send message, WebSocket not open');
       setConnectionError("Unable to send message. Please check your connection and try again.");
+      retryWebSocketConnection();
     }
-  }, [wsChat, wsAuth]);
+  }, [wsChat, wsAuth, retryWebSocketConnection]);
 
   const value: WebSocketContextType = {
     wsAuth,
