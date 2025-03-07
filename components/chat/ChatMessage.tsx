@@ -32,8 +32,8 @@ const styles = StyleSheet.create({
   },
   botMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#E5E5EA',
-    color: '#333'
+    backgroundColor: '#FFC107',
+    color: '#212121'
   },
 });
 
@@ -46,11 +46,11 @@ const markdownStyles = {
     code_block: { backgroundColor: 'rgba(255, 255, 255, 0.2)', color: '#FFFFFF', padding: 8, borderRadius: 2 },
   },
   bot: {
-    body: { color: '#000000' },
+    body: { color: '#212121' },
     paragraph: { fontSize: 16 },
     link: { color: '#007AFF' },
     code_inline: { backgroundColor: 'rgba(0, 0, 0, 0.05)', color: '#000000' },
-    code_block: { backgroundColor: 'rgba(0, 0, 0, 0.05)', color: '#000000', padding: 8, borderRadius: 2 },
+    code_block: { backgroundColor: '#FFC107', color: '#000000', padding: 8, borderRadius: 2 },
   },
 };
 

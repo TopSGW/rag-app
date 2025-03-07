@@ -1,7 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
+import { useWebSocket } from '@/contexts/WebSocketContext';
 
-const TypingIndicator: React.FC = () => {
+interface TypingIndicatorProps {
+  isVisible: boolean;
+}
+
+const TypingIndicator: React.FC<TypingIndicatorProps> = ({ isVisible }) => {
+  const { connectionStatus } = useWebSocket();
   const dot1Opacity = useRef(new Animated.Value(0)).current;
   const dot2Opacity = useRef(new Animated.Value(0)).current;
   const dot3Opacity = useRef(new Animated.Value(0)).current;
@@ -23,14 +29,33 @@ const TypingIndicator: React.FC = () => {
       ]);
     };
 
-    Animated.loop(
-      Animated.parallel([
-        animateDot(dot1Opacity, 0),
-        animateDot(dot2Opacity, 200),
-        animateDot(dot3Opacity, 400),
-      ])
-    ).start();
-  }, [dot1Opacity, dot2Opacity, dot3Opacity]);
+    let animation: Animated.CompositeAnimation | null = null;
+
+    if (isVisible && connectionStatus === 'connected') {
+      animation = Animated.loop(
+        Animated.parallel([
+          animateDot(dot1Opacity, 0),
+          animateDot(dot2Opacity, 200),
+          animateDot(dot3Opacity, 400),
+        ])
+      );
+      animation.start();
+    } else {
+      dot1Opacity.setValue(0);
+      dot2Opacity.setValue(0);
+      dot3Opacity.setValue(0);
+    }
+
+    return () => {
+      if (animation) {
+        animation.stop();
+      }
+    };
+  }, [dot1Opacity, dot2Opacity, dot3Opacity, isVisible, connectionStatus]);
+
+  if (!isVisible || connectionStatus !== 'connected') {
+    return null;
+  }
 
   return (
     <View style={styles.container}>

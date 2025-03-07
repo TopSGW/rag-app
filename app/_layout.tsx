@@ -13,6 +13,8 @@ import { useColorScheme } from '../hooks/useColorScheme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { RepositoryProvider } from '../contexts/RepositoryContext';
 import { FileUploadProvider } from '../contexts/FileUploadContext';
+import { WebSocketProvider } from '../contexts/WebSocketContext';
+import ConnectionStatusDialog from '../components/common/ConnectionStatusDialog';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -56,18 +58,20 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
-        <RepositoryProvider>
-          <FileUploadProvider>
-            <PaperProvider>
-              <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                <View style={{ flex: 1, backgroundColor: colorScheme === 'dark' ? '#000' : '#fff' }}>
-                  <RootLayoutNav />
-                  <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-                </View>
-              </ThemeProvider>
-            </PaperProvider>
-          </FileUploadProvider>
-        </RepositoryProvider>
+        <WebSocketProvider>
+          <RepositoryProvider>
+            <FileUploadProvider>
+              <PaperProvider>
+                <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                  <View style={{ flex: 1, backgroundColor: colorScheme === 'dark' ? '#000' : '#fff' }}>
+                    <RootLayoutNav />
+                    <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+                  </View>
+                </ThemeProvider>
+              </PaperProvider>
+            </FileUploadProvider>
+          </RepositoryProvider>
+        </WebSocketProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );

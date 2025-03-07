@@ -1,6 +1,15 @@
+import Constants from 'expo-constants';
+
 // API configuration
-export const BACKEND_URL = 'http://213.192.2.103:40143';
-export const WEBSOCKET_URL = 'ws://213.192.2.103:40143';
+const DEV_BACKEND_URL = 'http://213.192.2.103:40136';
+const PROD_BACKEND_URL = 'https://213.192.2.103:40136'; // Change this to your production HTTPS URL
+const DEV_WEBSOCKET_URL = 'ws://213.192.2.103:40136';
+const PROD_WEBSOCKET_URL = 'wss://213.192.2.103:40136'; // Change this to your production WSS URL
+
+const isProduction = !__DEV__;
+
+export const BACKEND_URL = isProduction ? PROD_BACKEND_URL : DEV_BACKEND_URL;
+export const WEBSOCKET_URL = isProduction ? PROD_WEBSOCKET_URL : DEV_WEBSOCKET_URL;
 
 // Function to get the appropriate URL based on the protocol
 export const getApiUrl = (useWebSocket: boolean = false) => {

@@ -1,132 +1,40 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { View, TextInput, FlatList, Text, StyleSheet, Alert } from 'react-native';
-import { getApiUrl } from '@/config/api';
-import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import TypingIndicator from '../common/TypingIndicator';
+import { useWebSocket } from '@/contexts/WebSocketContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Message {
   id: string;
   content: string;
-  sender: 'user' | 'bot';
+  sender: 'user' | 'bot' | 'system';
   loading?: boolean;
 }
 
 const ChatComponent: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
-  const [wsAuth, setWsAuth] = useState<WebSocket | null>(null);
-  const [wsChat, setWsChat] = useState<WebSocket | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
   const flatListRef = useRef<FlatList>(null);
-  const { getToken, setToken, clearToken } = useAuth();
+  const { wsChat, sendChatMessage, connectionStatus, lastMessage } = useWebSocket();
+  const { isAuthenticated } = useAuth();
 
-  // Initialize Chat WebSocket (defined first so auth function can call it)
-  const initializeChatWebSocket = useCallback((token: string) => {
-    const websocketUrl = getApiUrl(true);
-    const chatWs = new WebSocket(`${websocketUrl}/ws/chat?token=${token}`);
-    chatWs.onopen = () => {
-      console.log("Chat WebSocket connected");
-    };
-
-    chatWs.onmessage = (event) => {
-      console.log("Chat message received:", event.data);
-      const data = JSON.parse(event.data);
-      if (data.error === "Token has expired or is invalid") {
-        handleTokenExpiration();
-      } else {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.loading ? { ...msg, content: data.message, loading: false } : msg
-          )
-        );
-      }
-    };
-
-    chatWs.onerror = (error) => {
-      console.error("Chat WebSocket error:", error);
-    };
-
-    chatWs.onclose = (event) => {
-      console.log("Chat WebSocket closed with code:", event.code);
-      if (event.code === 1008) {
-        // Token expired or invalid
-        handleTokenExpiration();
-      } else {
-        // Attempt reconnection after a delay
-        setTimeout(() => {
-          getToken().then(token => {
-            if (token) {
-              initializeChatWebSocket(token);
-            }
-          });
-        }, 3000);
-      }
-    };
-
-    setWsChat(chatWs);
-  }, [getApiUrl, getToken]);
-
-  // Initialize Auth WebSocket
-  const initializeAuthWebSocket = useCallback(async () => {
-    const websocketUrl = getApiUrl(true);
-    const authWs = new WebSocket(`${websocketUrl}/ws/auth-dialogue`);
-    
-    authWs.onopen = () => {
-      console.log("Auth WebSocket connected");
-    };
-
-    authWs.onmessage = async (event) => {
-      console.log("Auth message received:", event.data);
-      const data = JSON.parse(event.data);
-      if (data.token) {
-        await setToken(data.token);
-        initializeChatWebSocket(data.token);
-      }
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.loading ? { ...msg, content: data.message, loading: false } : msg
-        )
-      );
-    };
-
-    authWs.onerror = (error) => {
-      console.error("Auth WebSocket error:", error);
-    };
-
-    authWs.onclose = (event) => {
-      console.log("Auth WebSocket closed with code:", event.code);
-      Alert.prompt("Server connection failed!")
-      // Optionally add reconnection logic for auth WebSocket if needed.
-    };
-
-    const token = await getToken();
-    if(token) {
-      initializeChatWebSocket(token);
-    }
-
-    setWsAuth(authWs);
-  }, [getApiUrl, setToken, initializeChatWebSocket]);
-
-  // Initialize WebSocket connections once on mount
   useEffect(() => {
-    initializeAuthWebSocket();
-    return () => {
-      wsAuth?.close();
-      wsChat?.close();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleTokenExpiration = async () => {
-    await clearToken();
-    Alert.alert(
-      "Session Expired",
-      "Your session has expired. Please sign in again.",
-      [{ text: "OK", onPress: () => router.replace('/biometric') }]
-    );
-  };
+    if (lastMessage) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          content: lastMessage,
+          sender: 'bot',
+        },
+      ]);
+      setIsTyping(false);
+    }
+  }, [lastMessage]);
 
   const sendMessage = async () => {
     if (inputMessage.trim() === '') return;
@@ -137,45 +45,10 @@ const ChatComponent: React.FC = () => {
       sender: 'user'
     };
   
-    const loadingMessage: Message = {
-      id: (Date.now() + 1).toString(),
-      content: '',
-      sender: 'bot',
-      loading: true
-    };
+    setMessages(prev => [...prev, newMessage]);
+    setIsTyping(true);
   
-    setMessages(prev => [...prev, newMessage, loadingMessage]);
-  
-    const token = await getToken();
-    console.log("Sending message with token:", token);
-  
-    // If no token, use auth websocket instead
-    if (!token) {
-      if (wsAuth && wsAuth.readyState === WebSocket.OPEN) {
-        wsAuth.send(JSON.stringify({ user_input: inputMessage }));
-      } else {
-        console.warn("Auth WebSocket not open");
-      }
-      setInputMessage('');
-      return;
-    }
-  
-    // If token exists, ensure the chat websocket is open before sending
-    if (wsChat) {
-      if (wsChat.readyState === WebSocket.OPEN) {
-        wsChat.send(JSON.stringify({ user_input: inputMessage }));
-      } else if (wsChat.readyState === WebSocket.CONNECTING) {
-        // Wait until open, then send the message
-        wsChat.onopen = () => {
-          console.log("Chat WebSocket is now open. Sending buffered message.");
-          wsChat.send(JSON.stringify({ user_input: inputMessage }));
-        };
-      } else {
-        console.warn("Chat WebSocket not open");
-      }
-    } else {
-      console.warn("Chat WebSocket instance is null");
-    }
+    sendChatMessage(inputMessage);
     setInputMessage('');
   };
   
@@ -184,12 +57,17 @@ const ChatComponent: React.FC = () => {
   };
   
   const renderMessage = ({ item }: { item: Message }) => {
-    if (item.loading) {
-      return <TypingIndicator />;
-    }
     return (
-      <View style={[styles.messageBubble, item.sender === 'user' ? styles.userMessage : styles.botMessage]}>
-        <Text style={[styles.messageText, item.sender === 'bot' ? styles.botMessageText : null]}>
+      <View style={[
+        styles.messageBubble, 
+        item.sender === 'user' ? styles.userMessage : 
+        item.sender === 'bot' ? styles.botMessage : styles.systemMessage
+      ]}>
+        <Text style={[
+          styles.messageText, 
+          item.sender === 'bot' ? styles.botMessageText : 
+          item.sender === 'system' ? styles.systemMessageText : null
+        ]}>
           {item.content}
         </Text>
       </View>
@@ -205,6 +83,7 @@ const ChatComponent: React.FC = () => {
         renderItem={renderMessage}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
+      {isTyping && connectionStatus === 'connected' && <TypingIndicator isVisible={true} />}
       <View style={styles.inputContainer}>
         <TouchableOpacity style={styles.uploadButton} onPress={handleUpload}>
           <Ionicons name="cloud-upload-sharp" size={24} color="black" />
@@ -244,11 +123,19 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     backgroundColor: '#E5E5EA',
   },
+  systemMessage: {
+    alignSelf: 'center',
+    backgroundColor: '#FFD700',
+  },
   messageText: {
     color: '#FFFFFF',
   },
   botMessageText: {
     color: '#000000',
+  },
+  systemMessageText: {
+    color: '#000000',
+    fontStyle: 'italic',
   },
   inputContainer: {
     flexDirection: 'row',

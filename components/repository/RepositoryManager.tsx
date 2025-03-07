@@ -11,10 +11,10 @@ import {
 } from 'react-native';
 import { useRepository } from '@/contexts/RepositoryContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { ThemedView } from './ThemedView';
-import { ThemedText } from './ThemedText';
+import { ThemedView } from '../common/ThemedView';
+import { ThemedText } from '../common/ThemedText';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { Repository } from '@/types/repository';
+import { Repository } from '@/interfaces/repository';
 
 export function RepositoryManager() {
   const { isAuthenticated } = useAuth();

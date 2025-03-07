@@ -28,7 +28,7 @@ const repositoryApi = new RepositoryAPI();
 const { width } = Dimensions.get('window');
 
 function RepositoryManagementScreen() {
-  const { getToken } = useAuth();
+  const { getToken, isAuthenticated, authenticate } = useAuth();
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRepository, setSelectedRepository] = useState<Repository | null>(null);
@@ -43,9 +43,20 @@ function RepositoryManagementScreen() {
   const fetchUser = async () => {
     const token = await getToken();
     if (!token) {
-      Alert.alert('Error', 'User token is missing. Please log in.');
-      setUserLoading(false);
-      return;
+      if (!isAuthenticated) {
+        try {
+          await authenticate();
+        } catch (error) {
+          console.error('Authentication failed:', error);
+          Alert.alert('Error', 'Failed to authenticate. Please try again.');
+          setUserLoading(false);
+          return;
+        }
+      } else {
+        Alert.alert('Error', 'User token is missing. Please log in again.');
+        setUserLoading(false);
+        return;
+      }
     }
     try {
       const response = await axios.get(`${BACKEND_URL}/get_user`, {
