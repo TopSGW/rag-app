@@ -1,84 +1,142 @@
-import React from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 
 const ConnectionStatusDialog: React.FC = () => {
-  const { connectionStatus } = useWebSocket();
+  const { connectionStatus, connectionError, initializeWebSockets } = useWebSocket();
+  const [showStatus, setShowStatus] = useState(false);
+  const [statusOpacity] = useState(new Animated.Value(0));
+  const [dotOpacity] = useState(new Animated.Value(0));
 
-  if (connectionStatus !== 'disconnected') {
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+    if (connectionStatus !== 'connected') {
+      setShowStatus(true);
+      Animated.timing(statusOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      timeout = setTimeout(() => {
+        Animated.timing(statusOpacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => setShowStatus(false));
+      }, 2000);
+    }
+    return () => clearTimeout(timeout);
+  }, [connectionStatus, statusOpacity]);
+
+  useEffect(() => {
+    if (connectionStatus === 'connecting') {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(dotOpacity, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(dotOpacity, {
+            toValue: 0,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      dotOpacity.setValue(0);
+    }
+  }, [connectionStatus, dotOpacity]);
+
+  const getStatusMessage = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'Connected to server';
+      case 'disconnected':
+        return 'Disconnected from server';
+      case 'connecting':
+        return 'Connecting to server';
+      case 'error':
+        // Check if the error is an Auth WebSocket error
+        if (connectionError && connectionError.includes('Auth WebSocket error')) {
+          return 'Connection error occurred';
+        }
+        return connectionError || 'An error occurred';
+      default:
+        return 'Unknown connection status';
+    }
+  };
+
+  const getStatusColor = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return '#4CAF50';
+      case 'disconnected':
+        return '#FFA000';
+      case 'connecting':
+        return '#2196F3';
+      case 'error':
+        return '#F44336';
+      default:
+        return '#757575';
+    }
+  };
+
+  if (!showStatus) {
     return null;
   }
 
   return (
-    <Modal
-      transparent={true}
-      animationType="fade"
-      visible={true}
-    >
-      <View style={styles.centeredView}>
-        <View style={styles.modalView}>
-          <Text style={styles.modalText}>Server Connection Failed</Text>
-          <Text style={styles.descriptionText}>
-            We're having trouble connecting to the server. Please check your internet connection and try again.
-          </Text>
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => {
-              // You can add a retry logic here if needed
-              console.log('Retry connection');
-            }}
-          >
-            <Text style={styles.buttonText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
+    <Animated.View style={[styles.container, { opacity: statusOpacity }]}>
+      <View style={[styles.statusBar, { backgroundColor: getStatusColor() }]}>
+        <Text style={styles.statusText}>{getStatusMessage()}</Text>
+        {connectionStatus === 'connecting' && (
+          <Animated.Text style={[styles.dot, { opacity: dotOpacity }]}>.</Animated.Text>
+        )}
       </View>
-    </Modal>
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
-  centeredView: {
-    flex: 1,
+  container: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  },
+  statusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingVertical: 5,
   },
-  modalView: {
-    margin: 20,
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 35,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  modalText: {
-    marginBottom: 15,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  descriptionText: {
-    marginBottom: 20,
-    textAlign: 'center',
-    fontSize: 14,
-  },
-  button: {
-    backgroundColor: '#2196F3',
-    borderRadius: 20,
-    padding: 10,
-    elevation: 2,
-  },
-  buttonText: {
+  statusText: {
     color: 'white',
+    fontSize: 14,
     fontWeight: 'bold',
-    textAlign: 'center',
+  },
+  dot: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginLeft: 2,
+  },
+  retryButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 5,
+    alignSelf: 'center',
+    marginTop: 5,
+  },
+  retryText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });
 

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import TypingIndicator from '../common/TypingIndicator';
+import ConnectionStatusDialog from '../common/ConnectionStatusDialog';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -37,7 +38,7 @@ const ChatComponent: React.FC = () => {
   }, [lastMessage]);
 
   const sendMessage = async () => {
-    if (inputMessage.trim() === '') return;
+    if (inputMessage.trim() === '' || connectionStatus !== 'connected') return;
   
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -76,6 +77,7 @@ const ChatComponent: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <ConnectionStatusDialog />
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -89,15 +91,20 @@ const ChatComponent: React.FC = () => {
           <Ionicons name="cloud-upload-sharp" size={24} color="black" />
         </TouchableOpacity>
         <TextInput
-          style={styles.input}
+          style={[styles.input, connectionStatus !== 'connected' && styles.disabledInput]}
           value={inputMessage}
           onChangeText={setInputMessage}
           placeholder="Type a message..."
           placeholderTextColor="#999"
           multiline
+          editable={connectionStatus === 'connected'}
         />
-        <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
-          <Ionicons name="send-sharp" size={24} color="black" />
+        <TouchableOpacity 
+          style={[styles.sendButton, connectionStatus !== 'connected' && styles.disabledButton]} 
+          onPress={sendMessage}
+          disabled={connectionStatus !== 'connected'}
+        >
+          <Ionicons name="send-sharp" size={24} color={connectionStatus === 'connected' ? "black" : "#999"} />
         </TouchableOpacity>
       </View>
     </View>
@@ -150,12 +157,18 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginRight: 10,
   },
+  disabledInput: {
+    backgroundColor: '#E5E5EA',
+  },
   sendButton: {
     width: 50,
     height: 50,
     backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   uploadButton: {
     width: 50,

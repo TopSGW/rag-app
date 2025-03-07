@@ -4,7 +4,7 @@ import { Slot, Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { View, SafeAreaView } from 'react-native';
 import 'react-native-reanimated';
 import { PaperProvider } from 'react-native-paper';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -14,7 +14,7 @@ import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { RepositoryProvider } from '../contexts/RepositoryContext';
 import { FileUploadProvider } from '../contexts/FileUploadContext';
 import { WebSocketProvider } from '../contexts/WebSocketContext';
-import ConnectionStatusDialog from '../components/common/ConnectionStatusDialog';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -56,23 +56,27 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <WebSocketProvider>
-          <RepositoryProvider>
-            <FileUploadProvider>
-              <PaperProvider>
-                <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                  <View style={{ flex: 1, backgroundColor: colorScheme === 'dark' ? '#000' : '#fff' }}>
-                    <RootLayoutNav />
-                    <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-                  </View>
-                </ThemeProvider>
-              </PaperProvider>
-            </FileUploadProvider>
-          </RepositoryProvider>
-        </WebSocketProvider>
-      </AuthProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <AuthProvider>
+          <WebSocketProvider>
+            <RepositoryProvider>
+              <FileUploadProvider>
+                <PaperProvider>
+                  <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                    <SafeAreaView style={{ flex: 1, backgroundColor: colorScheme === 'dark' ? '#000' : '#fff' }}>
+                      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+                      <View style={{ flex: 1 }}>
+                        <RootLayoutNav />
+                      </View>
+                    </SafeAreaView>
+                  </ThemeProvider>
+                </PaperProvider>
+              </FileUploadProvider>
+            </RepositoryProvider>
+          </WebSocketProvider>
+        </AuthProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }
