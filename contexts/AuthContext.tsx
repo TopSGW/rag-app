@@ -48,7 +48,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const compatible = await LocalAuthentication.hasHardwareAsync();
       setIsBiometricSupported(compatible);
     } catch (error) {
-      console.error('Error checking biometric support:', error);
       setIsBiometricSupported(false);
     }
   };
@@ -83,7 +82,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return result.success;
     } catch (error) {
-      console.error('Biometric authentication error:', error);
       Alert.alert('Error', 'Failed to authenticate. Please try again.');
       return false;
     }

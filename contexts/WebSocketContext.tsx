@@ -80,12 +80,10 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setLastMessage(data.message);
         }
       } catch (error) {
-        console.error('Error handling chat WebSocket message:', error);
       }
     };
 
     chatWs.onerror = (error) => {
-      console.error('Chat WebSocket error:', error);
       setConnectionStatus('error');
       setConnectionError("Failed to connect to chat. Please try again later.");
     };
@@ -127,7 +125,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         handleTokenExpiration();
       }
     } catch (error) {
-      console.error('Error handling WebSocket message:', error);
     }
   }, [setToken, handleTokenExpiration, initializeChatWebSocket]);
 
@@ -153,7 +150,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     authWs.onmessage = handleWebSocketMessage;
 
     authWs.onerror = (error) => {
-      console.error('Auth WebSocket error:', error);
       setConnectionStatus('error');
       setConnectionError("Failed to establish authentication connection. Please check your internet connection and try again.");
     };
@@ -219,7 +215,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.log('Sending message through', wsChat ? 'chat' : 'auth', 'WebSocket');
       activeWebSocket.send(JSON.stringify({ user_input: message }));
     } else {
-      console.error('Unable to send message, WebSocket not open');
       setConnectionError("Unable to send message. Please check your connection and try again.");
       retryWebSocketConnection();
     }

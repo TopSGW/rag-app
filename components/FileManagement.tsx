@@ -37,7 +37,7 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
       setFiles(fileList.files);
     } catch (error) {
       setError('Failed to load files. Please try again.');
-      console.error('Error loading files:', error);
+      console.log('Error loading files:', error);
     } finally {
       setIsLoading(false);
     }
@@ -86,7 +86,7 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
         setError('Upload canceled');
       } else {
         setError('Failed to upload files. Please try again.');
-        console.error('Error uploading files:', error);
+        console.log('Error uploading files:', error);
       }
     } finally {
       setIsUploading(false);
@@ -122,7 +122,7 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
               loadFiles();
             } catch (error) {
               setError('Failed to delete file. Please try again.');
-              console.error('Error deleting file:', error);
+              console.log('Error deleting file:', error);
             } finally {
               setIsLoading(false);
             }

@@ -62,7 +62,7 @@ export function RepositoryProvider({ children }: { children: React.ReactNode }) 
         }
         isInitialized.current = true;
       } catch (error) {
-        console.error('Error loading stored data:', error);
+        console.log('Error loading stored data:', error);
       }
     };
 
@@ -81,7 +81,7 @@ export function RepositoryProvider({ children }: { children: React.ReactNode }) 
           SecureStore.setItemAsync(STORAGE_KEYS.CURRENT_REPOSITORY, JSON.stringify(state.currentRepository)),
         ]);
       } catch (error) {
-        console.error('Error saving to storage:', error);
+        console.log('Error saving to storage:', error);
       } finally {
         isUpdating.current = false;
         if (pendingOperation.current) {

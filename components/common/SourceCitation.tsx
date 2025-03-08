@@ -13,7 +13,7 @@ const SourceCitation: React.FC<SourceCitationProps> = ({ title, url }) => {
     if (supported) {
       await Linking.openURL(url);
     } else {
-      console.error("Don't know how to open this URL: " + url);
+      console.log("Don't know how to open this URL: " + url);
     }
   };
 
