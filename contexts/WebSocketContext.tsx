@@ -30,16 +30,22 @@ const INITIAL_RETRY_DELAY = 1000;
 const MAX_RETRY_DELAY = 30000;
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [wsAuth, setWsAuth] = useState<WebSocket | null>(null);
-  const [wsChat, setWsChat] = useState<WebSocket | null>(null);
+  // Use useRef for values that don't need to trigger re-renders
+  const wsAuthRef = useRef<WebSocket | null>(null);
+  const wsChatRef = useRef<WebSocket | null>(null);
+  const retryCountRef = useRef(0);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastMessageRef = useRef<string | null>(null);
+  
+  // States that should trigger UI updates
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting' | 'error'>('disconnected');
   const [isAnimationEnabled, setIsAnimationEnabled] = useState(true);
-  const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [lastMessage, setLastMessage] = useState<string | null>(null);
+  
   const { getToken, setToken, clearToken, isAuthenticated } = useAuth();
-  const retryCount = useRef(0);
-  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Memoize this function to prevent recreation on every render
   const toggleAnimation = useCallback(() => {
     setIsAnimationEnabled((prev) => !prev);
   }, []);
@@ -54,13 +60,13 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     );
   }, [clearToken]);
 
-  const initializeChatWebSocket = useCallback((token: string) => {
+  const initializeChatWebSocket = useCallback(async (token: string) => {
     console.log('Initializing chat WebSocket');
-    if (wsChat) {
+    if (wsChatRef.current) {
       console.log('Closing existing chat WebSocket');
-      wsChat.close();
+      wsChatRef.current.close();
     }
-    setToken(token);
+    await setToken(token);
     const websocketUrl = getApiUrl(true);
     console.log('Chat WebSocket URL:', `${websocketUrl}/ws/chat?token=${token}`);
     const chatWs = new WebSocket(`${websocketUrl}/ws/chat?token=${token}`);
@@ -69,27 +75,28 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.log('Chat WebSocket connected successfully');
       setConnectionStatus('connected');
       setConnectionError(null);
-      retryCount.current = 0;
+      retryCountRef.current = 0;
     };
 
     chatWs.onmessage = (event) => {
-      console.log('Received message on chat WebSocket:', event.data);
       try {
         const data = JSON.parse(event.data);
         if (data.message) {
+          lastMessageRef.current = data.message;
+          // Only update state if message changes to prevent unnecessary re-renders
           setLastMessage(data.message);
         }
       } catch (error) {
+        // Silent error handling
       }
     };
 
-    chatWs.onerror = (error) => {
+    chatWs.onerror = () => {
       setConnectionStatus('error');
       setConnectionError("Failed to connect to chat. Please try again later.");
     };
 
     chatWs.onclose = (event) => {
-      console.log('Chat WebSocket closed:', event.code);
       setConnectionStatus('disconnected');
       if (event.code === 1008) {
         handleTokenExpiration();
@@ -99,25 +106,24 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     };
 
-    setWsChat(chatWs);
-  }, [getToken, handleTokenExpiration, setConnectionStatus, setToken]);
+    wsChatRef.current = chatWs;
+  }, [getToken, handleTokenExpiration, setToken]);
 
   const handleWebSocketMessage = useCallback(async (event: MessageEvent) => {
-    console.log('Received message on auth WebSocket:', event.data);
     try {
       const data = JSON.parse(event.data);
       
       if (data.token) {
-        console.log('Received new token from auth WebSocket, updating chat WebSocket');
         await setToken(data.token);
-        if (wsChat && wsChat.readyState === WebSocket.OPEN) {
-          wsChat.send(JSON.stringify({ update_token: data.token }));
+        if (wsChatRef.current && wsChatRef.current.readyState === WebSocket.OPEN) {
+          wsChatRef.current.send(JSON.stringify({ update_token: data.token }));
         } else {
           initializeChatWebSocket(data.token);
         }
       }
 
       if (data.message) {
+        lastMessageRef.current = data.message;
         setLastMessage(data.message);
       }
 
@@ -125,14 +131,15 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         handleTokenExpiration();
       }
     } catch (error) {
+      // Silent error handling
     }
   }, [setToken, handleTokenExpiration, initializeChatWebSocket]);
 
   const initializeAuthWebSocket = useCallback(() => {
     console.log('Initializing auth WebSocket');
-    if (wsAuth) {
+    if (wsAuthRef.current) {
       console.log('Closing existing auth WebSocket');
-      wsAuth.close();
+      wsAuthRef.current.close();
     }
     const websocketUrl = getApiUrl(true);
     console.log('Auth WebSocket URL:', `${websocketUrl}/ws/auth-dialogue`);
@@ -144,29 +151,29 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.log('Auth WebSocket connected successfully');
       setConnectionStatus('connected');
       setConnectionError(null);
-      retryCount.current = 0;
+      retryCountRef.current = 0;
     };
 
     authWs.onmessage = handleWebSocketMessage;
 
-    authWs.onerror = (error) => {
+    authWs.onerror = () => {
       setConnectionStatus('error');
       setConnectionError("Failed to establish authentication connection. Please check your internet connection and try again.");
     };
 
-    authWs.onclose = (event) => {
-      console.log('Auth WebSocket closed:', event.code);
+    authWs.onclose = () => {
       setConnectionStatus('disconnected');
       setConnectionError("Authentication connection closed. Attempting to reconnect...");
       retryWebSocketConnection();
     };
 
-    setWsAuth(authWs);
-  }, [handleWebSocketMessage, setConnectionStatus]);
+    wsAuthRef.current = authWs;
+  }, [handleWebSocketMessage]);
 
+  // Create a stable retryWebSocketConnection function that won't cause re-renders
   const retryWebSocketConnection = useCallback(() => {
-    const retryDelay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, retryCount.current), MAX_RETRY_DELAY);
-    retryCount.current += 1;
+    const retryDelay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, retryCountRef.current), MAX_RETRY_DELAY);
+    retryCountRef.current += 1;
 
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
@@ -178,51 +185,58 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }, retryDelay);
   }, []);
 
+  // Memoize initializeWebSockets to prevent recreating on every render
   const initializeWebSockets = useCallback(async () => {
-    console.log('Initializing WebSockets, isAuthenticated:', isAuthenticated);
-    const token = await getToken();
-    if (token && isAuthenticated) {
-      console.log('Token available and authenticated, initializing chat WebSocket');
-      initializeChatWebSocket(token);
-    } else {
-      console.log('No token or not authenticated, initializing auth WebSocket');
-      initializeAuthWebSocket();
+    try {
+      const token = await getToken();
+      if (token && isAuthenticated) {
+        await initializeChatWebSocket(token);
+      } else {
+        initializeAuthWebSocket();
+      }
+    } catch (error) {
+      console.error('Error initializing WebSockets:', error);
+      setConnectionError("Failed to initialize connection. Please try again.");
     }
   }, [getToken, isAuthenticated, initializeChatWebSocket, initializeAuthWebSocket]);
 
+  // Clean up resources when component unmounts
   useEffect(() => {
-    console.log('WebSocketProvider useEffect, isAuthenticated:', isAuthenticated);
-    initializeWebSockets();
     return () => {
-      if (wsAuth) {
-        console.log('Closing auth WebSocket');
-        wsAuth.close();
+      if (wsAuthRef.current) {
+        wsAuthRef.current.close();
+        wsAuthRef.current = null;
       }
-      if (wsChat) {
-        console.log('Closing chat WebSocket');
-        wsChat.close();
+      if (wsChatRef.current) {
+        wsChatRef.current.close();
+        wsChatRef.current = null;
       }
       if (retryTimeoutRef.current) {
-        console.log('Clearing retry timeout');
         clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
       }
     };
+  }, []);
+
+  // Initialize WebSockets on mount and when authentication status changes
+  useEffect(() => {
+    initializeWebSockets();
   }, [initializeWebSockets, isAuthenticated]);
 
   const sendChatMessage = useCallback((message: string) => {
-    const activeWebSocket = wsChat || wsAuth;
+    const activeWebSocket = wsChatRef.current || wsAuthRef.current;
     if (activeWebSocket && activeWebSocket.readyState === WebSocket.OPEN) {
-      console.log('Sending message through', wsChat ? 'chat' : 'auth', 'WebSocket');
       activeWebSocket.send(JSON.stringify({ user_input: message }));
     } else {
       setConnectionError("Unable to send message. Please check your connection and try again.");
       retryWebSocketConnection();
     }
-  }, [wsChat, wsAuth, retryWebSocketConnection]);
+  }, [retryWebSocketConnection]);
 
-  const value: WebSocketContextType = {
-    wsAuth,
-    wsChat,
+  // Create a stable value object to prevent unnecessary re-renders
+  const contextValue = useCallback(() => ({
+    wsAuth: wsAuthRef.current,
+    wsChat: wsChatRef.current,
     sendChatMessage,
     connectionStatus,
     isAnimationEnabled,
@@ -230,10 +244,18 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     lastMessage,
     connectionError,
     initializeWebSockets,
-  };
+  }), [
+    sendChatMessage, 
+    connectionStatus, 
+    isAnimationEnabled, 
+    toggleAnimation, 
+    lastMessage, 
+    connectionError, 
+    initializeWebSockets
+  ]);
 
   return (
-    <WebSocketContext.Provider value={value}>
+    <WebSocketContext.Provider value={contextValue()}>
       {children}
     </WebSocketContext.Provider>
   );

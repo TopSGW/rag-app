@@ -1,37 +1,58 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 
 const ConnectionStatusDialog: React.FC = () => {
   const { connectionStatus, connectionError, initializeWebSockets } = useWebSocket();
   const [showStatus, setShowStatus] = useState(false);
-  const [statusOpacity] = useState(new Animated.Value(0));
-  const [dotOpacity] = useState(new Animated.Value(0));
+  
+  // Create animation values only once using useMemo
+  const statusOpacity = useMemo(() => new Animated.Value(0), []);
+  const dotOpacity = useMemo(() => new Animated.Value(0), []);
+  
+  // Animation configurations - memoized to prevent recreating objects
+  const fadeInConfig = useMemo(() => ({
+    toValue: 1,
+    duration: 300,
+    useNativeDriver: true,
+  }), []);
+  
+  const fadeOutConfig = useMemo(() => ({
+    toValue: 0,
+    duration: 300,
+    useNativeDriver: true,
+  }), []);
 
+  // Handle status visibility animation
   useEffect(() => {
-    let timeout: NodeJS.Timeout;
+    let fadeOutTimeout: NodeJS.Timeout | null = null;
+    
     if (connectionStatus !== 'connected') {
       setShowStatus(true);
-      Animated.timing(statusOpacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
+      // Fade in animation
+      Animated.timing(statusOpacity, fadeInConfig).start();
     } else {
-      timeout = setTimeout(() => {
-        Animated.timing(statusOpacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }).start(() => setShowStatus(false));
+      // Only start fade out after delay
+      fadeOutTimeout = setTimeout(() => {
+        Animated.timing(statusOpacity, fadeOutConfig).start(() => {
+          setShowStatus(false);
+        });
       }, 2000);
     }
-    return () => clearTimeout(timeout);
-  }, [connectionStatus, statusOpacity]);
+    
+    // Clean up timeout to prevent memory leaks
+    return () => {
+      if (fadeOutTimeout) clearTimeout(fadeOutTimeout);
+    };
+  }, [connectionStatus, statusOpacity, fadeInConfig, fadeOutConfig]);
 
+  // Handle connecting animation (blinking dot)
   useEffect(() => {
+    let animationLoop: Animated.CompositeAnimation | null = null;
+    
     if (connectionStatus === 'connecting') {
-      Animated.loop(
+      // Create and start the animation loop
+      animationLoop = Animated.loop(
         Animated.sequence([
           Animated.timing(dotOpacity, {
             toValue: 1,
@@ -44,13 +65,24 @@ const ConnectionStatusDialog: React.FC = () => {
             useNativeDriver: true,
           }),
         ])
-      ).start();
+      );
+      
+      animationLoop.start();
     } else {
+      // Reset the dot opacity
       dotOpacity.setValue(0);
     }
+    
+    // Clean up the animation when component unmounts or status changes
+    return () => {
+      if (animationLoop) {
+        animationLoop.stop();
+      }
+    };
   }, [connectionStatus, dotOpacity]);
 
-  const getStatusMessage = () => {
+  // Memoize status message to prevent recalculation
+  const statusMessage = useMemo(() => {
     switch (connectionStatus) {
       case 'connected':
         return 'Connected to server';
@@ -59,7 +91,6 @@ const ConnectionStatusDialog: React.FC = () => {
       case 'connecting':
         return 'Connecting to server';
       case 'error':
-        // Check if the error is an Auth WebSocket error
         if (connectionError && connectionError.includes('Auth WebSocket error')) {
           return 'Connection error occurred';
         }
@@ -67,9 +98,10 @@ const ConnectionStatusDialog: React.FC = () => {
       default:
         return 'Unknown connection status';
     }
-  };
+  }, [connectionStatus, connectionError]);
 
-  const getStatusColor = () => {
+  // Memoize status color to prevent recalculation
+  const statusColor = useMemo(() => {
     switch (connectionStatus) {
       case 'connected':
         return '#4CAF50';
@@ -82,18 +114,28 @@ const ConnectionStatusDialog: React.FC = () => {
       default:
         return '#757575';
     }
-  };
+  }, [connectionStatus]);
+  
+  // Retry connection handler
+  const handleRetry = useCallback(() => {
+    if (connectionStatus === 'disconnected' || connectionStatus === 'error') {
+      initializeWebSockets();
+    }
+  }, [connectionStatus, initializeWebSockets]);
 
+  // Early return for improved performance
   if (!showStatus) {
     return null;
   }
 
   return (
     <Animated.View style={[styles.container, { opacity: statusOpacity }]}>
-      <View style={[styles.statusBar, { backgroundColor: getStatusColor() }]}>
-        <Text style={styles.statusText}>{getStatusMessage()}</Text>
+      <View style={[styles.statusBar, { backgroundColor: statusColor }]}>
+        <Text style={styles.statusText}>{statusMessage}</Text>
         {connectionStatus === 'connecting' && (
-          <Animated.Text style={[styles.dot, { opacity: dotOpacity }]}>.</Animated.Text>
+          <Animated.Text style={[styles.dot, { opacity: dotOpacity }]}>
+            ...
+          </Animated.Text>
         )}
       </View>
     </Animated.View>
@@ -132,6 +174,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignSelf: 'center',
     marginTop: 5,
+    marginBottom: 5,
   },
   retryText: {
     color: 'white',
@@ -140,4 +183,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ConnectionStatusDialog;
+// Use memo to prevent unnecessary re-renders
+export default memo(ConnectionStatusDialog);

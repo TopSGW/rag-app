@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, memo } from 'react';
 import { View, TextInput, FlatList, Text, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity } from 'react-native';
@@ -15,17 +15,39 @@ interface Message {
   loading?: boolean;
 }
 
+// Create a memoized message component to prevent re-renders
+const MessageItem = memo(({ item }: { item: Message }) => {
+  return (
+    <View style={[
+      styles.messageBubble, 
+      item.sender === 'user' ? styles.userMessage : 
+      item.sender === 'bot' ? styles.botMessage : styles.systemMessage
+    ]}>
+      <Text style={[
+        styles.messageText, 
+        item.sender === 'bot' ? styles.botMessageText : 
+        item.sender === 'system' ? styles.systemMessageText : null
+      ]}>
+        {item.content}
+      </Text>
+    </View>
+  );
+});
+
 const ChatComponent: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const flatListRef = useRef<FlatList>(null);
-  const { wsChat, sendChatMessage, connectionStatus, lastMessage } = useWebSocket();
-  const { isAuthenticated } = useAuth();
-
+  const { sendChatMessage, connectionStatus, lastMessage } = useWebSocket();
+  const prevLastMessageRef = useRef<string | null>(null);
+  
+  // Add this optimization to prevent unnecessary message updates
   useEffect(() => {
-    if (lastMessage) {
-      setMessages((prev) => [
+    if (lastMessage && lastMessage !== prevLastMessageRef.current) {
+      prevLastMessageRef.current = lastMessage;
+      
+      setMessages(prev => [
         ...prev,
         {
           id: Date.now().toString(),
@@ -37,7 +59,7 @@ const ChatComponent: React.FC = () => {
     }
   }, [lastMessage]);
 
-  const sendMessage = async () => {
+  const sendMessage = useCallback(() => {
     if (inputMessage.trim() === '' || connectionStatus !== 'connected') return;
   
     const newMessage: Message = {
@@ -51,29 +73,26 @@ const ChatComponent: React.FC = () => {
   
     sendChatMessage(inputMessage);
     setInputMessage('');
-  };
+  }, [inputMessage, connectionStatus, sendChatMessage]);
   
-  const handleUpload = () => {
+  const handleUpload = useCallback(() => {
     router.push('/repositoryManagement');
-  };
+  }, []);
   
-  const renderMessage = ({ item }: { item: Message }) => {
-    return (
-      <View style={[
-        styles.messageBubble, 
-        item.sender === 'user' ? styles.userMessage : 
-        item.sender === 'bot' ? styles.botMessage : styles.systemMessage
-      ]}>
-        <Text style={[
-          styles.messageText, 
-          item.sender === 'bot' ? styles.botMessageText : 
-          item.sender === 'system' ? styles.systemMessageText : null
-        ]}>
-          {item.content}
-        </Text>
-      </View>
-    );
-  };
+  // Optimize list rendering with keyExtractor and getItemLayout
+  const keyExtractor = useCallback((item: Message) => item.id, []);
+  
+  // Use onEndReached instead of onContentSizeChange for better scroll performance
+  const handleEndReached = useCallback(() => {
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  }, []);
+  
+  // Memoize the render function
+  const renderMessage = useCallback(({ item }: { item: Message }) => {
+    return <MessageItem item={item} />;
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -81,9 +100,14 @@ const ChatComponent: React.FC = () => {
       <FlatList
         ref={flatListRef}
         data={messages}
-        keyExtractor={(item) => item.id}
+        keyExtractor={keyExtractor}
         renderItem={renderMessage}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.1}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        removeClippedSubviews={true}
+        initialNumToRender={15}
       />
       {isTyping && connectionStatus === 'connected' && <TypingIndicator isVisible={true} />}
       <View style={styles.inputContainer}>
@@ -180,4 +204,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ChatComponent;
+export default memo(ChatComponent);
