@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from 'react';
 import { Alert } from 'react-native';
 import { getApiUrl } from '@/config/api';
 import { useAuth } from './AuthContext';
@@ -30,22 +38,21 @@ const INITIAL_RETRY_DELAY = 1000;
 const MAX_RETRY_DELAY = 30000;
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Use useRef for values that don't need to trigger re-renders
+  // Non-state refs
   const wsAuthRef = useRef<WebSocket | null>(null);
   const wsChatRef = useRef<WebSocket | null>(null);
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastMessageRef = useRef<string | null>(null);
-  
-  // States that should trigger UI updates
+
+  // State that triggers re-renders
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting' | 'error'>('disconnected');
   const [isAnimationEnabled, setIsAnimationEnabled] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
-  
+
   const { getToken, setToken, clearToken, isAuthenticated } = useAuth();
 
-  // Memoize this function to prevent recreation on every render
   const toggleAnimation = useCallback(() => {
     setIsAnimationEnabled((prev) => !prev);
   }, []);
@@ -62,10 +69,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const initializeChatWebSocket = useCallback(async (token: string) => {
     console.log('Initializing chat WebSocket');
-    if (wsChatRef.current) {
-      console.log('Closing existing chat WebSocket');
-      wsChatRef.current.close();
-    }
+
     await setToken(token);
     const websocketUrl = getApiUrl(true);
     console.log('Chat WebSocket URL:', `${websocketUrl}/ws/chat?token=${token}`);
@@ -82,9 +86,11 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         const data = JSON.parse(event.data);
         if (data.message) {
-          lastMessageRef.current = data.message;
-          // Only update state if message changes to prevent unnecessary re-renders
-          setLastMessage(data.message);
+          // Update only when message changes to avoid unnecessary renders
+          if (data.message !== lastMessageRef.current) {
+            lastMessageRef.current = data.message;
+            setLastMessage(data.message);
+          }
         }
       } catch (error) {
         // Silent error handling
@@ -107,12 +113,11 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     wsChatRef.current = chatWs;
-  }, [getToken, handleTokenExpiration, setToken]);
+  }, [setToken, handleTokenExpiration]);
 
   const handleWebSocketMessage = useCallback(async (event: MessageEvent) => {
     try {
       const data = JSON.parse(event.data);
-      
       if (data.token) {
         await setToken(data.token);
         if (wsChatRef.current && wsChatRef.current.readyState === WebSocket.OPEN) {
@@ -121,12 +126,12 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           initializeChatWebSocket(data.token);
         }
       }
-
       if (data.message) {
-        lastMessageRef.current = data.message;
-        setLastMessage(data.message);
+        if (data.message !== lastMessageRef.current) {
+          lastMessageRef.current = data.message;
+          setLastMessage(data.message);
+        }
       }
-
       if (data.error === "Token has expired or is invalid") {
         handleTokenExpiration();
       }
@@ -137,16 +142,12 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const initializeAuthWebSocket = useCallback(() => {
     console.log('Initializing auth WebSocket');
-    if (wsAuthRef.current) {
-      console.log('Closing existing auth WebSocket');
-      wsAuthRef.current.close();
-    }
     const websocketUrl = getApiUrl(true);
     console.log('Auth WebSocket URL:', `${websocketUrl}/ws/auth-dialogue`);
     setConnectionStatus('connecting');
     setConnectionError(null);
     const authWs = new WebSocket(`${websocketUrl}/ws/auth-dialogue`);
-    
+
     authWs.onopen = () => {
       console.log('Auth WebSocket connected successfully');
       setConnectionStatus('connected');
@@ -170,22 +171,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     wsAuthRef.current = authWs;
   }, [handleWebSocketMessage]);
 
-  // Create a stable retryWebSocketConnection function that won't cause re-renders
-  const retryWebSocketConnection = useCallback(() => {
-    const retryDelay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, retryCountRef.current), MAX_RETRY_DELAY);
-    retryCountRef.current += 1;
-
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-    }
-
-    console.log(`Retrying WebSocket connection in ${retryDelay}ms`);
-    retryTimeoutRef.current = setTimeout(async () => {
-      await initializeWebSockets();
-    }, retryDelay);
-  }, []);
-
-  // Memoize initializeWebSockets to prevent recreating on every render
   const initializeWebSockets = useCallback(async () => {
     try {
       const token = await getToken();
@@ -199,18 +184,23 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setConnectionError("Failed to initialize connection. Please try again.");
     }
   }, [getToken, isAuthenticated, initializeChatWebSocket, initializeAuthWebSocket]);
+  // Ensure the retry function always uses the current initializeWebSockets reference.
+  const retryWebSocketConnection = useCallback(() => {
+    const retryDelay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, retryCountRef.current), MAX_RETRY_DELAY);
+    retryCountRef.current += 1;
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+    }
+    console.log(`Retrying WebSocket connection in ${retryDelay}ms`);
+    retryTimeoutRef.current = setTimeout(async () => {
+      await initializeWebSockets();
+    }, retryDelay);
+  }, [initializeWebSockets]);
 
-  // Clean up resources when component unmounts
   useEffect(() => {
     return () => {
-      if (wsAuthRef.current) {
-        wsAuthRef.current.close();
-        wsAuthRef.current = null;
-      }
-      if (wsChatRef.current) {
-        wsChatRef.current.close();
-        wsChatRef.current = null;
-      }
+      wsAuthRef.current?.close();
+      wsChatRef.current?.close();
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
@@ -218,7 +208,6 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, []);
 
-  // Initialize WebSockets on mount and when authentication status changes
   useEffect(() => {
     initializeWebSockets();
   }, [initializeWebSockets, isAuthenticated]);
@@ -233,29 +222,32 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [retryWebSocketConnection]);
 
-  // Create a stable value object to prevent unnecessary re-renders
-  const contextValue = useCallback(() => ({
-    wsAuth: wsAuthRef.current,
-    wsChat: wsChatRef.current,
-    sendChatMessage,
-    connectionStatus,
-    isAnimationEnabled,
-    toggleAnimation,
-    lastMessage,
-    connectionError,
-    initializeWebSockets,
-  }), [
-    sendChatMessage, 
-    connectionStatus, 
-    isAnimationEnabled, 
-    toggleAnimation, 
-    lastMessage, 
-    connectionError, 
-    initializeWebSockets
-  ]);
+  // Memoize the context value to avoid unnecessary re-renders of consumers.
+  const contextValue = useMemo(
+    () => ({
+      wsAuth: wsAuthRef.current,
+      wsChat: wsChatRef.current,
+      sendChatMessage,
+      connectionStatus,
+      isAnimationEnabled,
+      toggleAnimation,
+      lastMessage,
+      connectionError,
+      initializeWebSockets,
+    }),
+    [
+      sendChatMessage,
+      connectionStatus,
+      isAnimationEnabled,
+      toggleAnimation,
+      lastMessage,
+      connectionError,
+      initializeWebSockets,
+    ]
+  );
 
   return (
-    <WebSocketContext.Provider value={contextValue()}>
+    <WebSocketContext.Provider value={contextValue}>
       {children}
     </WebSocketContext.Provider>
   );

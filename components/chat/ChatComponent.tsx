@@ -1,12 +1,19 @@
 import React, { useState, useRef, useCallback, useEffect, memo } from 'react';
-import { View, TextInput, FlatList, Text, StyleSheet, Alert } from 'react-native';
+import {
+  View,
+  TextInput,
+  FlatList,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import TypingIndicator from '../common/TypingIndicator';
 import ConnectionStatusDialog from '../common/ConnectionStatusDialog';
 import { useWebSocket } from '@/contexts/WebSocketContext';
-import { useAuth } from '@/contexts/AuthContext';
 
 interface Message {
   id: string;
@@ -15,42 +22,47 @@ interface Message {
   loading?: boolean;
 }
 
-// Create a memoized message component to prevent re-renders
-const MessageItem = memo(({ item }: { item: Message }) => {
-  return (
-    <View style={[
-      styles.messageBubble, 
-      item.sender === 'user' ? styles.userMessage : 
-      item.sender === 'bot' ? styles.botMessage : styles.systemMessage
-    ]}>
-      <Text style={[
-        styles.messageText, 
-        item.sender === 'bot' ? styles.botMessageText : 
-        item.sender === 'system' ? styles.systemMessageText : null
-      ]}>
-        {item.content}
-      </Text>
-    </View>
-  );
-});
+const MessageItem = memo(({ item }: { item: Message }) => (
+  <View
+    style={[
+      styles.messageBubble,
+      item.sender === 'user'
+        ? styles.userMessage
+        : item.sender === 'bot'
+        ? styles.botMessage
+        : styles.systemMessage,
+    ]}
+  >
+    <Text
+      style={[
+        styles.messageText,
+        item.sender === 'bot'
+          ? styles.botMessageText
+          : item.sender === 'system'
+          ? styles.systemMessageText
+          : null,
+      ]}
+    >
+      {item.content}
+    </Text>
+  </View>
+));
 
 const ChatComponent: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<FlatList<Message>>(null);
   const { sendChatMessage, connectionStatus, lastMessage } = useWebSocket();
   const prevLastMessageRef = useRef<string | null>(null);
-  
-  // Add this optimization to prevent unnecessary message updates
+
   useEffect(() => {
     if (lastMessage && lastMessage !== prevLastMessageRef.current) {
       prevLastMessageRef.current = lastMessage;
-      
-      setMessages(prev => [
+      setMessages((prev) => [
         ...prev,
         {
-          id: Date.now().toString(),
+          id: `${Date.now()}-${Math.random()}`, // Ensure unique keys
           content: lastMessage,
           sender: 'bot',
         },
@@ -61,61 +73,68 @@ const ChatComponent: React.FC = () => {
 
   const sendMessage = useCallback(() => {
     if (inputMessage.trim() === '' || connectionStatus !== 'connected') return;
-  
+
     const newMessage: Message = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random()}`,
       content: inputMessage,
-      sender: 'user'
+      sender: 'user',
     };
-  
-    setMessages(prev => [...prev, newMessage]);
+
+    setMessages((prev) => [...prev, newMessage]);
     setIsTyping(true);
-  
     sendChatMessage(inputMessage);
     setInputMessage('');
   }, [inputMessage, connectionStatus, sendChatMessage]);
-  
+
   const handleUpload = useCallback(() => {
     router.push('/repositoryManagement');
   }, []);
-  
-  // Optimize list rendering with keyExtractor and getItemLayout
-  const keyExtractor = useCallback((item: Message) => item.id, []);
-  
-  // Use onEndReached instead of onContentSizeChange for better scroll performance
-  const handleEndReached = useCallback(() => {
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  }, []);
-  
-  // Memoize the render function
+
+  // Auto-scroll whenever messages change:
+  useEffect(() => {
+    if (flatListRef.current && messages.length > 0) {
+      flatListRef.current.scrollToEnd({ animated: true });
+    }
+  }, [messages]);
+
   const renderMessage = useCallback(({ item }: { item: Message }) => {
     return <MessageItem item={item} />;
   }, []);
 
   return (
-    <View style={styles.container}>
+    /**
+     * If you need the keyboard to push the content up in iOS, you can wrap
+     * everything in a KeyboardAvoidingView.
+     */
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <ConnectionStatusDialog />
+
       <FlatList
         ref={flatListRef}
         data={messages}
-        keyExtractor={keyExtractor}
         renderItem={renderMessage}
-        onEndReached={handleEndReached}
-        onEndReachedThreshold={0.1}
-        maxToRenderPerBatch={10}
-        windowSize={10}
-        removeClippedSubviews={true}
-        initialNumToRender={15}
+        keyExtractor={(item) => item.id}
+        // Remove getItemLayout if the height is not strictly 60.
+        // contentContainerStyle ensures the list grows and remains scrollable:
+        contentContainerStyle={styles.listContainer}
+        keyboardShouldPersistTaps="handled"
+        // Instead of using onEndReached for chat, we rely on an effect to scroll.
       />
+
       {isTyping && connectionStatus === 'connected' && <TypingIndicator isVisible={true} />}
+
       <View style={styles.inputContainer}>
         <TouchableOpacity style={styles.uploadButton} onPress={handleUpload}>
           <Ionicons name="cloud-upload-sharp" size={24} color="black" />
         </TouchableOpacity>
         <TextInput
-          style={[styles.input, connectionStatus !== 'connected' && styles.disabledInput]}
+          style={[
+            styles.input,
+            connectionStatus !== 'connected' && styles.disabledInput,
+          ]}
           value={inputMessage}
           onChangeText={setInputMessage}
           placeholder="Type a message..."
@@ -123,22 +142,35 @@ const ChatComponent: React.FC = () => {
           multiline
           editable={connectionStatus === 'connected'}
         />
-        <TouchableOpacity 
-          style={[styles.sendButton, connectionStatus !== 'connected' && styles.disabledButton]} 
+        <TouchableOpacity
+          style={[
+            styles.sendButton,
+            connectionStatus !== 'connected' && styles.disabledButton,
+          ]}
           onPress={sendMessage}
           disabled={connectionStatus !== 'connected'}
         >
-          <Ionicons name="send-sharp" size={24} color={connectionStatus === 'connected' ? "black" : "#999"} />
+          <Ionicons
+            name="send-sharp"
+            size={24}
+            color={connectionStatus === 'connected' ? 'black' : '#999'}
+          />
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
+
+export default memo(ChatComponent);
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#060606',
+  },
+  listContainer: {
+    flexGrow: 1,
+    paddingVertical: 10,
   },
   messageBubble: {
     padding: 10,
@@ -203,5 +235,3 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
-
-export default memo(ChatComponent);
