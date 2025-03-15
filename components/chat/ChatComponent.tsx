@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import TypingIndicator from '../common/TypingIndicator';
 import ConnectionStatusDialog from '../common/ConnectionStatusDialog';
-import { useWebSocket } from '@/contexts/WebSocketContext';
+import { useWebSocket, AuthMessageType } from '@/contexts/WebSocketContext';
 
 interface Message {
   id: string;
@@ -50,23 +50,23 @@ const MessageItem = memo(({ item }: { item: Message }) => (
 
 const ChatComponent: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversationHistory, setConversationHistory] = useState<AuthMessageType[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const flatListRef = useRef<FlatList<Message>>(null);
-  const { sendChatMessage, connectionStatus, lastMessage } = useWebSocket();
+  const { sendChatMessage, sendAuthMessage, connectionStatus, lastMessage, wsChat, wsAuth } = useWebSocket();
   const prevLastMessageRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (lastMessage && lastMessage !== prevLastMessageRef.current) {
       prevLastMessageRef.current = lastMessage;
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `${Date.now()}-${Math.random()}`, // Ensure unique keys
-          content: lastMessage,
-          sender: 'bot',
-        },
-      ]);
+      const newMessage: Message = {
+        id: `${Date.now()}-${Math.random()}`,
+        content: lastMessage,
+        sender: 'bot',
+      };
+      setMessages((prev) => [...prev, newMessage]);
+      setConversationHistory((prev) => [...prev, { role: 'assistant', content: lastMessage }]);
       setIsTyping(false);
     }
   }, [lastMessage]);
@@ -81,16 +81,28 @@ const ChatComponent: React.FC = () => {
     };
 
     setMessages((prev) => [...prev, newMessage]);
+    
     setIsTyping(true);
-    sendChatMessage(inputMessage);
+
+    if (wsChat && wsChat.readyState === WebSocket.OPEN) {
+      sendChatMessage(inputMessage);
+    } else if (wsAuth && wsAuth.readyState === WebSocket.OPEN) {
+      const newAuthMessage: AuthMessageType = { role: 'user', content: inputMessage };
+      const updatedConversationHistory = [...conversationHistory, newAuthMessage];
+      setConversationHistory(updatedConversationHistory);
+  
+      sendAuthMessage(updatedConversationHistory);
+    } else {
+      console.error('No active WebSocket connection available');
+    }
+
     setInputMessage('');
-  }, [inputMessage, connectionStatus, sendChatMessage]);
+  }, [inputMessage, connectionStatus, sendChatMessage, sendAuthMessage, conversationHistory, wsChat, wsAuth]);
 
   const handleUpload = useCallback(() => {
     router.push('/repositoryManagement');
   }, []);
 
-  // Auto-scroll whenever messages change:
   useEffect(() => {
     if (flatListRef.current && messages.length > 0) {
       flatListRef.current.scrollToEnd({ animated: true });
@@ -102,10 +114,6 @@ const ChatComponent: React.FC = () => {
   }, []);
 
   return (
-    /**
-     * If you need the keyboard to push the content up in iOS, you can wrap
-     * everything in a KeyboardAvoidingView.
-     */
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -117,11 +125,8 @@ const ChatComponent: React.FC = () => {
         data={messages}
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
-        // Remove getItemLayout if the height is not strictly 60.
-        // contentContainerStyle ensures the list grows and remains scrollable:
         contentContainerStyle={styles.listContainer}
         keyboardShouldPersistTaps="handled"
-        // Instead of using onEndReached for chat, we rely on an effect to scroll.
       />
 
       {isTyping && connectionStatus === 'connected' && <TypingIndicator isVisible={true} />}

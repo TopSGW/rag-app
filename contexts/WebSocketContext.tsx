@@ -12,10 +12,15 @@ import { getApiUrl } from '@/config/api';
 import { useAuth } from './AuthContext';
 import { router } from 'expo-router';
 
+export interface AuthMessageType {
+  role: string,
+  content: string
+}
 interface WebSocketContextType {
   wsAuth: WebSocket | null;
   wsChat: WebSocket | null;
-  sendChatMessage: (message: string) => void;
+  sendChatMessage: (messages: string) => void;
+  sendAuthMessage: (messages: AuthMessageType[]) => void;
   connectionStatus: 'connected' | 'disconnected' | 'connecting' | 'error';
   isAnimationEnabled: boolean;
   toggleAnimation: () => void;
@@ -213,7 +218,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [initializeWebSockets, isAuthenticated]);
 
   const sendChatMessage = useCallback((message: string) => {
-    const activeWebSocket = wsChatRef.current || wsAuthRef.current;
+    const activeWebSocket = wsChatRef.current;
     if (activeWebSocket && activeWebSocket.readyState === WebSocket.OPEN) {
       activeWebSocket.send(JSON.stringify({ user_input: message }));
     } else {
@@ -222,12 +227,22 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [retryWebSocketConnection]);
 
+  const sendAuthMessage = useCallback((messages: AuthMessageType[]) =>{
+    const activeWebAuthSocket = wsAuthRef.current;
+    if(activeWebAuthSocket && activeWebAuthSocket.readyState == WebSocket.OPEN) {
+      activeWebAuthSocket.send(JSON.stringify({user_input: messages}));
+    } else{
+      setConnectionError("Unable to send message. Please check your connection and try again.");
+      retryWebSocketConnection();
+    }
+  }, [retryWebSocketConnection])
   // Memoize the context value to avoid unnecessary re-renders of consumers.
   const contextValue = useMemo(
     () => ({
       wsAuth: wsAuthRef.current,
       wsChat: wsChatRef.current,
       sendChatMessage,
+      sendAuthMessage,
       connectionStatus,
       isAnimationEnabled,
       toggleAnimation,
@@ -237,6 +252,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }),
     [
       sendChatMessage,
+      sendAuthMessage,
       connectionStatus,
       isAnimationEnabled,
       toggleAnimation,
