@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect, memo } from 'react';
+import { useState, useRef, useCallback, useEffect, memo } from 'react';
 import {
   View,
   TextInput,
