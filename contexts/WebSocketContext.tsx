@@ -12,15 +12,15 @@ import { getApiUrl } from '@/config/api';
 import { useAuth } from './AuthContext';
 import { router } from 'expo-router';
 
-export interface AuthMessageType {
+export interface MessageType {
   role: string,
   content: string
 }
 interface WebSocketContextType {
   wsAuth: WebSocket | null;
   wsChat: WebSocket | null;
-  sendChatMessage: (messages: string) => void;
-  sendAuthMessage: (messages: AuthMessageType[]) => void;
+  sendChatMessage: (messages: MessageType[]) => void;
+  sendAuthMessage: (messages: MessageType[]) => void;
   connectionStatus: 'connected' | 'disconnected' | 'connecting' | 'error';
   isAnimationEnabled: boolean;
   toggleAnimation: () => void;
@@ -217,17 +217,17 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     initializeWebSockets();
   }, [initializeWebSockets, isAuthenticated]);
 
-  const sendChatMessage = useCallback((message: string) => {
+  const sendChatMessage = useCallback((messages: MessageType[]) => {
     const activeWebSocket = wsChatRef.current;
     if (activeWebSocket && activeWebSocket.readyState === WebSocket.OPEN) {
-      activeWebSocket.send(JSON.stringify({ user_input: message }));
+      activeWebSocket.send(JSON.stringify({ user_input: messages }));
     } else {
       setConnectionError("Unable to send message. Please check your connection and try again.");
       retryWebSocketConnection();
     }
   }, [retryWebSocketConnection]);
 
-  const sendAuthMessage = useCallback((messages: AuthMessageType[]) =>{
+  const sendAuthMessage = useCallback((messages: MessageType[]) =>{
     const activeWebAuthSocket = wsAuthRef.current;
     if(activeWebAuthSocket && activeWebAuthSocket.readyState == WebSocket.OPEN) {
       activeWebAuthSocket.send(JSON.stringify({user_input: messages}));

@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import TypingIndicator from '../common/TypingIndicator';
 import ConnectionStatusDialog from '../common/ConnectionStatusDialog';
-import { useWebSocket, AuthMessageType } from '@/contexts/WebSocketContext';
+import { useWebSocket, MessageType } from '@/contexts/WebSocketContext';
 
 interface Message {
   id: string;
@@ -50,7 +50,7 @@ const MessageItem = memo(({ item }: { item: Message }) => (
 
 const ChatComponent: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [conversationHistory, setConversationHistory] = useState<AuthMessageType[]>([]);
+  const [conversationHistory, setConversationHistory] = useState<MessageType[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const flatListRef = useRef<FlatList<Message>>(null);
@@ -81,16 +81,15 @@ const ChatComponent: React.FC = () => {
     };
 
     setMessages((prev) => [...prev, newMessage]);
+    const newAuthMessage: MessageType = { role: 'user', content: inputMessage };
+    const updatedConversationHistory = [...conversationHistory, newAuthMessage];
+    setConversationHistory(updatedConversationHistory);
     
     setIsTyping(true);
 
     if (wsChat && wsChat.readyState === WebSocket.OPEN) {
-      sendChatMessage(inputMessage);
+      sendChatMessage(updatedConversationHistory);
     } else if (wsAuth && wsAuth.readyState === WebSocket.OPEN) {
-      const newAuthMessage: AuthMessageType = { role: 'user', content: inputMessage };
-      const updatedConversationHistory = [...conversationHistory, newAuthMessage];
-      setConversationHistory(updatedConversationHistory);
-  
       sendAuthMessage(updatedConversationHistory);
     } else {
       console.error('No active WebSocket connection available');
