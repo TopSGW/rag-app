@@ -118,6 +118,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     wsChatRef.current = chatWs;
+    console.log('Chat WebSocket initialized >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>');
   }, [setToken, handleTokenExpiration]);
 
   const handleWebSocketMessage = useCallback(async (event: MessageEvent) => {
@@ -227,15 +228,18 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [retryWebSocketConnection]);
 
-  const sendAuthMessage = useCallback((messages: MessageType[]) =>{
-    const activeWebAuthSocket = wsAuthRef.current;
-    if(activeWebAuthSocket && activeWebAuthSocket.readyState == WebSocket.OPEN) {
-      activeWebAuthSocket.send(JSON.stringify({user_input: messages}));
-    } else{
+  const sendAuthMessage = useCallback((messages: MessageType[]) => {
+    const activeWebAuthSocket = (wsChatRef.current && wsChatRef.current.readyState === WebSocket.OPEN)
+      ? wsChatRef.current
+      : wsAuthRef.current;
+  
+    if (activeWebAuthSocket && activeWebAuthSocket.readyState === WebSocket.OPEN) {
+      activeWebAuthSocket.send(JSON.stringify({ user_input: messages }));
+    } else {
       setConnectionError("Unable to send message. Please check your connection and try again.");
       retryWebSocketConnection();
     }
-  }, [retryWebSocketConnection])
+  }, [retryWebSocketConnection]);
   // Memoize the context value to avoid unnecessary re-renders of consumers.
   const contextValue = useMemo(
     () => ({

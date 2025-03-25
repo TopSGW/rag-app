@@ -86,7 +86,9 @@ const ChatComponent: React.FC = () => {
     setConversationHistory(updatedConversationHistory);
     
     setIsTyping(true);
-
+    console.log(wsChat)
+    console.log("---------------------------")
+    console.log(wsAuth)
     if (wsChat && wsChat.readyState === WebSocket.OPEN) {
       sendChatMessage(updatedConversationHistory);
     } else if (wsAuth && wsAuth.readyState === WebSocket.OPEN) {
