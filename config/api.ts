@@ -1,9 +1,9 @@
 import Constants from 'expo-constants';
 
 // API configuration
-const DEV_BACKEND_URL = 'http://18.191.216.103:8000';
+const DEV_BACKEND_URL = 'http://38.147.83.18:38120';
 const PROD_BACKEND_URL = 'https://ebcf-157-157-221-30.ngrok-free.app'; // Change this to your production HTTPS URL
-const DEV_WEBSOCKET_URL = 'ws://18.191.216.103:8000';
+const DEV_WEBSOCKET_URL = 'ws://38.147.83.18:38120';
 const PROD_WEBSOCKET_URL = 'wss://ebcf-157-157-221-30.ngrok-free.app'; // Change this to your production WSS URL
 
 const isProduction = !__DEV__;

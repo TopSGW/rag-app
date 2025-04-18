@@ -13,6 +13,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { FileMetadata, RNFile, UploadConfig } from '../interfaces/files';
 import FileAPI from '../api/fileApi';
 import { AxiosProgressEvent } from 'axios';
+import { useFileUpload } from '../contexts/FileUploadProgressContext'; // Import the context hook
 
 interface FileManagementProps {
   phoneNumber: string;
@@ -21,13 +22,24 @@ interface FileManagementProps {
   onBack: () => void;
 }
 
-const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repositoryName, repositoryId, onBack }) => {
+const FileManagement: React.FC<FileManagementProps> = ({ 
+  phoneNumber, 
+  repositoryName, 
+  repositoryId, 
+  onBack 
+}) => {
   const [files, setFiles] = useState<FileMetadata[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const cancelTokenSource = useRef<ReturnType<typeof FileAPI.getCancelTokenSource> | null>(null);
+
+  // Use the global upload context
+  const { 
+    uploadProgress, 
+    isUploading, 
+    setUploadProgress, 
+    setIsUploading 
+  } = useFileUpload();
 
   const loadFiles = useCallback(async () => {
     setIsLoading(true);
@@ -56,9 +68,10 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
       });
 
       if (!result.canceled && result.assets.length > 0) {
+        // Use the global state setters
         setIsUploading(true);
-        setError(null);
         setUploadProgress(0);
+        setError(null);
 
         cancelTokenSource.current = FileAPI.getCancelTokenSource();
 
@@ -71,6 +84,7 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
         const uploadConfig: UploadConfig = {
           onUploadProgress: (progressEvent: AxiosProgressEvent) => {
             const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+            // Update global progress state
             setUploadProgress(percentCompleted);
           },
           cancelToken: cancelTokenSource.current.token
@@ -89,11 +103,12 @@ const FileManagement: React.FC<FileManagementProps> = ({ phoneNumber, repository
         console.log('Error uploading files:', error);
       }
     } finally {
+      // Reset global upload state
       setIsUploading(false);
       setUploadProgress(0);
       cancelTokenSource.current = null;
     }
-  }, [repositoryId, loadFiles]);
+  }, [repositoryId, loadFiles, setIsUploading, setUploadProgress]);
 
   const handleCancelUpload = useCallback(() => {
     if (cancelTokenSource.current) {

@@ -14,6 +14,8 @@ import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { RepositoryProvider } from '../contexts/RepositoryContext';
 import { FileUploadProvider } from '../contexts/FileUploadContext';
 import { WebSocketProvider } from '../contexts/WebSocketContext';
+import { FileUploadProgressProvider } from '@/contexts/FileUploadProgressContext';
+import GlobalUploadProgress from '@/components/common/GlobalUploadProgressBar';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -62,16 +64,19 @@ export default function RootLayout() {
           <WebSocketProvider>
             <RepositoryProvider>
               <FileUploadProvider>
-                <PaperProvider>
-                  <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                    <SafeAreaView style={{ flex: 1, backgroundColor: colorScheme === 'dark' ? '#000' : '#fff' }}>
-                      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-                      <View style={{ flex: 1 }}>
-                        <RootLayoutNav />
-                      </View>
-                    </SafeAreaView>
-                  </ThemeProvider>
-                </PaperProvider>
+                <FileUploadProgressProvider>
+                  <PaperProvider>
+                    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                      <SafeAreaView style={{ flex: 1, backgroundColor: colorScheme === 'dark' ? '#000' : '#fff' }}>
+                        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+                        <View style={{ flex: 1 }}>
+                          <RootLayoutNav />
+                        </View>
+                        <GlobalUploadProgress />
+                      </SafeAreaView>
+                    </ThemeProvider>
+                  </PaperProvider>
+                </FileUploadProgressProvider>
               </FileUploadProvider>
             </RepositoryProvider>
           </WebSocketProvider>
